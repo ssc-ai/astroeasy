@@ -144,7 +144,6 @@ class TestAstrometryIndexSeries:
         """Test that all expected series exist."""
         assert AstrometryIndexSeries.SERIES_5200
         assert AstrometryIndexSeries.SERIES_5200_LITE
-        assert AstrometryIndexSeries.SERIES_5200_SENPAI
         assert AstrometryIndexSeries.SERIES_4100
         assert AstrometryIndexSeries.SERIES_4200
         assert AstrometryIndexSeries.SERIES_5200_LITE_4100

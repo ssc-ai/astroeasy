@@ -31,11 +31,33 @@ def setup_logging(verbose: bool = False) -> None:
 
 def cmd_indices_download(args: argparse.Namespace) -> int:
     """Handle 'indices download' command."""
+    from astroeasy.indices import (
+        filter_structure_by_scales,
+        get_expected_structure,
+        human_readable_size,
+        scales_for_fov,
+    )
+
     series = AstrometryIndexSeries(args.series)
     output_path = Path(args.output)
+    fov = getattr(args, "fov", None)
+
+    if fov is not None:
+        # FOV-filtered subsets get an automatic subdirectory (e.g. 4200_2p0deg)
+        # so they can't be mistaken for (or mixed into) a full series download.
+        fov_tag = str(fov).replace(".", "p")
+        output_path = output_path / f"{series}_{fov_tag}deg"
+        scales = scales_for_fov(fov)
+        _, expected_structure = get_expected_structure(series)
+        filtered = filter_structure_by_scales(expected_structure, scales)
+        total_size = sum(filtered.values())
+        print(
+            f"FOV {fov}° -> scales {scales} -> "
+            f"{len(filtered)} files ({human_readable_size(total_size)})"
+        )
 
     print(f"Downloading {series} indices to {output_path}")
-    download_indices(output_path, series, max_workers=args.workers)
+    download_indices(output_path, series, max_workers=args.workers, fov_degrees=fov)
     print("Download complete.")
     return 0
 
@@ -44,13 +66,80 @@ def cmd_indices_examine(args: argparse.Namespace) -> int:
     """Handle 'indices examine' command."""
     series = AstrometryIndexSeries(args.series)
     path = Path(args.path)
+    fov = getattr(args, "fov", None)
 
-    if examine_indices(path, series):
+    if examine_indices(path, series, fov_degrees=fov):
         print(f"Indices at {path} are complete and valid for {series}.")
         return 0
     else:
         print(f"Indices at {path} are incomplete for {series}.")
         return 1
+
+
+def cmd_indices_recommend(args: argparse.Namespace) -> int:
+    """Handle 'indices recommend' command."""
+    from astroeasy.constants import INDEX_SCALE_RANGES
+    from astroeasy.indices import (
+        filter_structure_by_scales,
+        get_expected_structure,
+        human_readable_size,
+        scales_for_fov,
+    )
+
+    fov = args.fov
+    scales = scales_for_fov(fov)
+    fov_arcmin = fov * 60.0
+
+    print(f"FOV: {fov}° ({fov_arcmin:.1f} arcmin)")
+    print(f"Recommended quad range: {0.1 * fov_arcmin:.1f}' - {fov_arcmin:.1f}' (10%-100% of FOV)")
+    print(f"Matching index scales: {scales}")
+    print()
+
+    # Show scale details
+    print("Scale details:")
+    for s in scales:
+        lo, hi = INDEX_SCALE_RANGES[s]
+        print(f"  scale {s:2d}: {lo:.1f}' - {hi:.1f}'")
+    print()
+
+    # Show per-series breakdown
+    skip = {AstrometryIndexSeries.SERIES_CUSTOM}
+    print(f"{'Series':<20s} {'Files':>6s} {'Size':>10s}")
+    print("-" * 38)
+    for series in AstrometryIndexSeries:
+        if series in skip:
+            continue
+        _, expected = get_expected_structure(series)
+        filtered = filter_structure_by_scales(expected, scales)
+        total = sum(filtered.values())
+        print(f"{series.value:<20s} {len(filtered):>6d} {human_readable_size(total):>10s}")
+
+    print()
+    print("Example download command:")
+    print(f"  astroeasy indices download --series 5200_LITE --output /data/indices --fov {fov}")
+
+    # Generate config file if requested
+    config_path = getattr(args, "config", None)
+    if config_path:
+        import yaml
+
+        series = AstrometryIndexSeries(args.series)
+        indices_path = args.indices_path or "/data/indices"
+        # Use FOV to set width constraints with some margin
+        min_width = fov * 0.5
+        max_width = fov * 2.0
+        config_data = {
+            "indices_path": indices_path,
+            "indices_series": str(series),
+            "min_width_degrees": round(min_width, 3),
+            "max_width_degrees": round(max_width, 3),
+        }
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f, default_flow_style=False)
+        print()
+        print(f"Config written to {config_path}")
+
+    return 0
 
 
 def cmd_solve(args: argparse.Namespace) -> int:
@@ -215,16 +304,13 @@ def infer_index_series(indices_path: Path) -> AstrometryIndexSeries:
         return AstrometryIndexSeries.SERIES_4200
 
     if has_5200:
-        # Distinguish between 5200, 5200_LITE, and 5200_SENPAI by file sizes
-        # 5200_LITE files are smaller than 5200 files
+        # Distinguish between 5200 and 5200_LITE by file sizes
         sample_file = next((f for f in fits_files if f.name.startswith("index-5200-00")), None)
         if sample_file:
             size = sample_file.stat().st_size
-            # 5200_LITE ~331MB, 5200 ~628MB, 5200_SENPAI ~458MB for index-5200-00.fits
+            # 5200_LITE ~331MB, 5200 ~628MB for index-5200-00.fits
             if size < 400_000_000:
                 return AstrometryIndexSeries.SERIES_5200_LITE
-            elif size < 550_000_000:
-                return AstrometryIndexSeries.SERIES_5200_SENPAI
             else:
                 return AstrometryIndexSeries.SERIES_5200
         return AstrometryIndexSeries.SERIES_5200_LITE  # Default to LITE
@@ -757,6 +843,12 @@ def main() -> int:
         default=5,
         help="Number of concurrent downloads (default: 5)",
     )
+    download_parser.add_argument(
+        "--fov",
+        type=float,
+        default=None,
+        help="Field of view in degrees; only download index files for scales matching this FOV",
+    )
 
     # indices examine
     examine_parser = indices_subparsers.add_parser("examine", help="Examine index files")
@@ -773,6 +865,42 @@ def main() -> int:
         type=str,
         required=True,
         help="Path to indices directory",
+    )
+    examine_parser.add_argument(
+        "--fov",
+        type=float,
+        default=None,
+        help="Field of view in degrees; only check index files for scales matching this FOV",
+    )
+
+    # indices recommend
+    recommend_parser = indices_subparsers.add_parser(
+        "recommend", help="Recommend index series and files for a given FOV"
+    )
+    recommend_parser.add_argument(
+        "--fov",
+        type=float,
+        required=True,
+        help="Field of view in degrees",
+    )
+    recommend_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Write a sample astroeasy config YAML to this path",
+    )
+    recommend_parser.add_argument(
+        "--series",
+        type=str,
+        default="5200_LITE",
+        choices=[s.value for s in AstrometryIndexSeries],
+        help="Index series to use in generated config (default: 5200_LITE)",
+    )
+    recommend_parser.add_argument(
+        "--indices-path",
+        type=str,
+        default=None,
+        help="Indices directory path to use in generated config",
     )
 
     # solve subcommand
@@ -987,6 +1115,8 @@ def main() -> int:
             return cmd_indices_download(args)
         elif args.indices_command == "examine":
             return cmd_indices_examine(args)
+        elif args.indices_command == "recommend":
+            return cmd_indices_recommend(args)
         else:
             indices_parser.print_help()
             return 1

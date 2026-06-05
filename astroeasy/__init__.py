@@ -27,7 +27,7 @@ from astroeasy.catalog import query_gaia_field
 from astroeasy.catalog.gaia import CatalogStar, get_field_bounds_from_wcs
 from astroeasy.config import AstrometryConfig
 from astroeasy.constants import AstrometryIndexSeries
-from astroeasy.indices import download_indices, examine_indices
+from astroeasy.indices import download_indices, examine_indices, scales_for_fov
 from astroeasy.models import (
     AggressiveSolveResult,
     Detection,
@@ -68,6 +68,7 @@ __all__ = [
     "test_install",
     "examine_indices",
     "download_indices",
+    "scales_for_fov",
     # Plotting
     "plot_solved_field",
     "zscale",

@@ -1,9 +1,16 @@
 import logging
+import os
 import re
 import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# astrometry.net's solve-field shells out to the system python for helper
+# scripts (e.g. astrometry.util.removelines). Disable user site-packages so
+# those scripts use the system packages they were built against, rather than
+# picking up incompatible versions from ~/.local (e.g. NumPy 2.x).
+_SOLVE_ENV = {**os.environ, "PYTHONNOUSERSITE": "1"}
 
 
 def run_against_local(
@@ -31,6 +38,7 @@ def run_against_local(
             capture_output=True,
             text=True,
             cwd=run_directory,
+            env=_SOLVE_ENV,
         )
 
         # Log stdout/stderr for debugging
@@ -62,6 +70,7 @@ def run_against_local(
             capture_output=True,
             text=True,
             cwd=run_directory,
+            env=_SOLVE_ENV,
         )
         logger.info("[run_against_local] verification step complete")
 

@@ -8,7 +8,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from astropy.io import fits
 from tqdm import tqdm
 
 from astroeasy.constants import (
@@ -16,11 +15,11 @@ from astroeasy.constants import (
     ASTROMETRY_4200_EXPECTED_STRUCTURE,
     ASTROMETRY_5200_EXPECTED_STRUCTURE,
     ASTROMETRY_5200_LITE_EXPECTED_STRUCTURE,
-    ASTROMETRY_5200_SENPAI_EXPECTED_STRUCTURE,
     ASTROMETRY_INDICES_URL_4100,
     ASTROMETRY_INDICES_URL_4200,
     ASTROMETRY_INDICES_URL_5200,
     ASTROMETRY_INDICES_URL_5200_LITE,
+    INDEX_SCALE_RANGES,
     AstrometryIndexSeries,
 )
 
@@ -60,10 +59,63 @@ def get_fits_files(base_url: str) -> list[str]:
     return fits_files
 
 
+def scales_for_fov(fov_degrees: float) -> list[int]:
+    """Compute needed index scale numbers for a given field of view.
+
+    Uses the astrometry.net recommendation that index quads should be
+    10%-100% of the image FOV.
+
+    Args:
+        fov_degrees: Field of view in degrees.
+
+    Returns:
+        Sorted list of scale numbers (0-19) needed for this FOV.
+    """
+    fov_arcmin = fov_degrees * 60.0
+    quad_min = 0.1 * fov_arcmin  # 10% of FOV
+    quad_max = fov_arcmin  # 100% of FOV
+
+    scales = []
+    for scale, (lo, hi) in INDEX_SCALE_RANGES.items():
+        # Include if scale range overlaps with [quad_min, quad_max]
+        if hi > quad_min and lo < quad_max:
+            scales.append(scale)
+
+    return sorted(scales)
+
+
+def filter_structure_by_scales(
+    expected_structure: dict[str, int],
+    scales: list[int],
+) -> dict[str, int]:
+    """Filter an expected_structure dict to only include files matching given scales.
+
+    Args:
+        expected_structure: Filename -> size mapping.
+        scales: List of scale numbers to keep.
+
+    Returns:
+        Filtered filename -> size mapping.
+    """
+    scale_set = set(scales)
+    filtered = {}
+    for filename, size in expected_structure.items():
+        m = re.match(r"index-(\d{2})(\d{2})(?:-\d+)?\.fits", filename)
+        if m:
+            file_scale = int(m.group(2))
+            if file_scale in scale_set:
+                filtered[filename] = size
+        else:
+            # Keep files that don't match the pattern (shouldn't happen)
+            filtered[filename] = size
+    return filtered
+
+
 def download_fits_files(
     base_url: str,
     output_dir: str | Path | None = None,
     max_workers: int = 5,
+    filenames: set[str] | None = None,
 ) -> None:
     """Download .fits files, skipping existing files of the same size.
 
@@ -71,11 +123,15 @@ def download_fits_files(
         base_url: The URL to download .fits files from.
         output_dir: Directory to save files to. Defaults to current directory.
         max_workers: Number of concurrent downloads. Defaults to 5.
+        filenames: If set, only download files whose basename is in this set.
     """
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
     fits_files = get_fits_files(base_url)
+
+    if filenames is not None:
+        fits_files = [url for url in fits_files if url.split("/")[-1] in filenames]
 
     if not fits_files:
         logger.warning("No .fits files found!")
@@ -226,103 +282,6 @@ def examine_by_path_and_structure(
     return False
 
 
-def pare_5200_to_SENPAI(
-    series: AstrometryIndexSeries | str,
-    indices_path: str | Path,
-    output_path: str | Path,
-) -> None:
-    """Create 5200-SENPAI series from full 5200 series.
-
-    This creates a reduced version of the 5200 series with only essential
-    columns for matching (ra, dec, mag, ref_cat, ref_id).
-
-    Args:
-        series: Must be SERIES_5200.
-        indices_path: Path to the full 5200 indices.
-        output_path: Path to write the reduced indices.
-    """
-    if series != AstrometryIndexSeries.SERIES_5200:
-        raise ValueError("Only series=5200 is supported for creating 5200-SENPAI")
-
-    # Check if output already exists
-    already_converted = examine_by_path_and_structure(
-        "5200_SENPAI", output_path, ASTROMETRY_5200_SENPAI_EXPECTED_STRUCTURE
-    )
-    if already_converted:
-        logger.info("5200_SENPAI series already exists.")
-        return
-
-    source_indices_good = examine_by_path_and_structure(
-        series, indices_path, ASTROMETRY_5200_EXPECTED_STRUCTURE
-    )
-
-    if not source_indices_good:
-        raise ValueError("Source indices are not valid")
-
-    columns_to_keep = ["ra", "dec", "mag", "ref_cat", "ref_id"]
-    catalog_hdu_num = 13
-
-    indices_path = Path(indices_path)
-    output_path = Path(output_path)
-
-    # Create output directory if it doesn't exist
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    total_original_size = 0
-    total_new_size = 0
-
-    for index_file in ASTROMETRY_5200_EXPECTED_STRUCTURE.keys():
-        index_file_path = indices_path / index_file
-        output_file_path = output_path / index_file
-
-        if output_file_path.exists():
-            if (
-                os.path.getsize(output_file_path)
-                == ASTROMETRY_5200_SENPAI_EXPECTED_STRUCTURE[index_file]
-            ):
-                logger.info(f"[{index_file}] already exists and is valid")
-                continue
-
-        with fits.open(index_file_path) as hdul:
-            catalog_hdu = hdul[catalog_hdu_num]
-
-            # Create a new table with only the columns we want to keep
-            new_data = fits.BinTableHDU.from_columns(
-                [catalog_hdu.data.columns[col] for col in columns_to_keep]
-            )
-            new_data.header["AN_FILE"] = "TAGALONG"
-
-            hdul[catalog_hdu_num] = new_data
-            hdul.writeto(output_file_path, overwrite=True)
-
-            original_size = ASTROMETRY_5200_EXPECTED_STRUCTURE[index_file]
-            new_size = os.path.getsize(output_file_path)
-
-            total_original_size += original_size
-            total_new_size += new_size
-
-            reduction = original_size - new_size
-            reduction_percent = (reduction / original_size) * 100
-
-            logger.info(
-                f"{index_file} reduced by {human_readable_size(reduction)} ({reduction_percent:.1f}%) "
-                f"from {human_readable_size(original_size)} to {human_readable_size(new_size)}"
-            )
-
-    if total_original_size > 0:
-        total_reduction = total_original_size - total_new_size
-        total_reduction_percent = (total_reduction / total_original_size) * 100
-
-        logger.info(
-            f"Total size reduced by {human_readable_size(total_reduction)} ({total_reduction_percent:.1f}%) "
-            f"from {human_readable_size(total_original_size)} to {human_readable_size(total_new_size)}"
-        )
-
-    examine_by_path_and_structure(
-        "5200-SENPAI", output_path, ASTROMETRY_5200_SENPAI_EXPECTED_STRUCTURE
-    )
-
-
 def get_expected_structure(
     series: AstrometryIndexSeries,
 ) -> tuple[list[str], dict[str, int]]:
@@ -334,10 +293,7 @@ def get_expected_structure(
     Returns:
         Tuple of (list of base URLs, expected filename -> size mapping).
     """
-    if series == AstrometryIndexSeries.SERIES_5200_SENPAI:
-        base_urls = []
-        expected_structure = ASTROMETRY_5200_SENPAI_EXPECTED_STRUCTURE
-    elif series == AstrometryIndexSeries.SERIES_5200:
+    if series == AstrometryIndexSeries.SERIES_5200:
         base_urls = [ASTROMETRY_INDICES_URL_5200]
         expected_structure = ASTROMETRY_5200_EXPECTED_STRUCTURE
     elif series == AstrometryIndexSeries.SERIES_5200_LITE:
@@ -366,17 +322,22 @@ def get_expected_structure(
 def examine_indices(
     indices_path: str | Path,
     series: AstrometryIndexSeries = AstrometryIndexSeries.SERIES_5200_LITE,
+    fov_degrees: float | None = None,
 ) -> bool:
     """Examine indices at the given path for completeness.
 
     Args:
         indices_path: Path to the indices directory.
         series: Which index series to validate against.
+        fov_degrees: If set, only check files for scales matching this FOV.
 
     Returns:
         True if indices are complete and valid.
     """
     _, expected_structure = get_expected_structure(series)
+    if fov_degrees is not None:
+        scales = scales_for_fov(fov_degrees)
+        expected_structure = filter_structure_by_scales(expected_structure, scales)
     return examine_by_path_and_structure(series, indices_path, expected_structure)
 
 
@@ -384,6 +345,7 @@ def download_indices(
     output_path: str | Path,
     series: AstrometryIndexSeries = AstrometryIndexSeries.SERIES_5200_LITE,
     max_workers: int = 5,
+    fov_degrees: float | None = None,
 ) -> None:
     """Download index files for the specified series.
 
@@ -391,14 +353,26 @@ def download_indices(
         output_path: Directory to download indices to.
         series: Which index series to download.
         max_workers: Number of concurrent downloads.
+        fov_degrees: If set, only download files for scales matching this FOV.
     """
-    base_urls, _ = get_expected_structure(series)
+    base_urls, expected_structure = get_expected_structure(series)
 
     if not base_urls:
         raise ValueError(f"No download URLs available for series {series}")
 
+    needed_filenames = None
+    if fov_degrees is not None:
+        scales = scales_for_fov(fov_degrees)
+        filtered = filter_structure_by_scales(expected_structure, scales)
+        needed_filenames = set(filtered.keys())
+
     for base_url in base_urls:
-        download_fits_files(base_url, output_dir=output_path, max_workers=max_workers)
+        download_fits_files(
+            base_url,
+            output_dir=output_path,
+            max_workers=max_workers,
+            filenames=needed_filenames,
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -407,7 +381,7 @@ if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(description="Astrometry indices management")
     parser.add_argument(
         "action",
-        choices=["download", "examine", "map_expected", "supported", "build_5200_senpai"],
+        choices=["download", "examine", "map_expected", "supported"],
         help="Action to perform",
     )
     parser.add_argument(
@@ -452,8 +426,3 @@ if __name__ == "__main__":  # pragma: no cover
                 expected[series] = extract_expected_structure(url)
 
         print(json.dumps(expected, indent=4))
-
-    elif args.action == "build_5200_senpai":
-        indices_path = Path(args.index_path)
-        output_path = indices_path.parent / "5200-SENPAI"
-        pare_5200_to_SENPAI(args.series, indices_path, output_path)

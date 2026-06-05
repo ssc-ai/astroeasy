@@ -86,16 +86,40 @@ astroeasy indices download --series 5200_LITE --output /data/indices/5200-LITE
 astroeasy indices examine --series 5200_LITE --path /data/indices/5200-LITE
 ```
 
+### FOV-Filtered Downloads
+
+Download only the index files needed for your camera's field of view (saves significant disk space).
+
+`--fov` is the field of view **on a side**, in degrees — so `--fov 2.0` means a
+2°×2° field (4 square degrees) on a square detector. Filtered downloads land in
+an automatic subdirectory of `--output` named `<series>_<fov>deg` (e.g.
+`4200_2p0deg`) so they can't be mixed up with a full series download:
+
+```sh
+# 1-degree (1°x1°) FOV camera (~4.9 GB instead of ~35 GB for 5200_LITE_4100)
+# -> downloads to /data/indices/5200_LITE_4100_1p0deg
+astroeasy indices download --series 5200_LITE_4100 --output /data/indices --fov 1.0
+
+# 2-degree (2°x2°) FOV camera (~1.3 GB instead of ~32 GB for 4200)
+# -> downloads to /data/indices/4200_2p0deg
+astroeasy indices download --series 4200 --output /data/indices --fov 2.0
+```
+
+Validate a filtered set by passing the same `--fov` to `examine`:
+
+```sh
+astroeasy indices examine --series 4200 --path /data/indices/4200_2p0deg --fov 2.0
+```
+
 ### Supported Index Series
 
 | Series | Size | Description |
 |--------|------|-------------|
-| `5200_LITE` | ~15 GB | Recommended - good balance of coverage and size |
-| `5200` | ~75 GB | Full 5200 series with photometry |
-| `5200_SENPAI` | ~51 GB | Reduced 5200 with essential columns only |
-| `4100` | ~1.5 GB | Smaller, for wider fields |
-| `4200` | ~20 GB | Alternative to 4100 |
-| `5200_LITE_4100` | ~16.5 GB | Combined 5200_LITE + 4100 |
+| `5200_LITE` | ~36 GB | Recommended - good balance of coverage and size |
+| `5200` | ~80 GB | Full 5200 series with photometry |
+| `4100` | ~0.4 GB | Smaller, for wider fields |
+| `4200` | ~32 GB | Alternative to 4100 |
+| `5200_LITE_4100` | ~35 GB | Combined 5200_LITE + 4100 |
 
 ## CLI Reference
 
