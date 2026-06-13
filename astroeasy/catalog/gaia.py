@@ -27,6 +27,7 @@ def query_gaia_field(
     faint_limit: float = 18.0,
     bright_limit: float = -5.0,
     max_stars: int = 10000,
+    mirror_dir: str | None = None,
 ) -> list[CatalogStar]:
     """Query Gaia DR3 catalog for stars within RA/Dec bounds.
 
@@ -38,13 +39,26 @@ def query_gaia_field(
         faint_limit: Faint magnitude limit (default 18.0).
         bright_limit: Bright magnitude limit (default -5.0).
         max_stars: Maximum number of stars to return (default 10000).
+        mirror_dir: If set, serve the query from a local mirror directory
+            (see astroeasy.catalog.mirror) instead of the online TAP service.
 
     Returns:
         List of CatalogStar objects.
 
     Raises:
-        ImportError: If astroquery is not installed.
+        ImportError: If astroquery is not installed (online queries only).
     """
+    if mirror_dir is not None:
+        from astroeasy.catalog.mirror import query_gaia_field_local
+
+        return query_gaia_field_local(
+            min_ra, max_ra, min_dec, max_dec,
+            mirror_dir=mirror_dir,
+            faint_limit=faint_limit,
+            bright_limit=bright_limit,
+            max_stars=max_stars,
+        )
+
     try:
         from astroquery.gaia import Gaia
     except ImportError as err:

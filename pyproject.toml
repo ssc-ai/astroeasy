@@ -33,6 +33,11 @@ dependencies = [
 catalog = [
     "astroquery>=0.4",
 ]
+cascade = [
+    # Deps for the vendored tetra3 (astroeasy/_vendor) + the cascade tiers.
+    "scipy>=1.7",
+    "pillow>=8.3",
+]
 dev = [
     "build>=1.4.0",
     "twine>=6.2.0",
@@ -80,6 +85,7 @@ exclude_lines = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["astroeasy/_vendor"]
 
 [tool.ruff.lint]
 select = [
