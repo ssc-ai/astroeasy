@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
 import subprocess
 import tempfile
@@ -26,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from astroeasy.catalog.mirror import MIRROR_DTYPE, load_mirror_index
+from astroeasy.catalog.mirror import load_mirror_index, read_tile
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ def write_star_table(mirror_dir: str, out_fits: Path | str, depth_g: float) -> i
     index = load_mirror_index(mirror_dir)
     ras, decs, mags = [], [], []
     for meta in index["tiles"].values():
-        arr = np.fromfile(os.path.join(mirror_dir, meta["file"]), dtype=MIRROR_DTYPE)
+        arr = read_tile(mirror_dir, meta["file"])
         m = (np.isfinite(arr["g"]) & (arr["g"] <= depth_g)
              & np.isfinite(arr["ra"]) & np.isfinite(arr["dec"]))
         if not m.any():

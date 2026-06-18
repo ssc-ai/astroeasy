@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 # Depth used for the depth-measurement cone — deeper than any expected sensor.
 DEPTH_MEASURE_FAINT_G = 18.0
 
+# A rotation prior is only meaningful once enough frames agree on the field
+# orientation; with 1-2 frames the spread is degenerately small (always 0 for a
+# single frame) and would emit a bogus, over-confident prior.
+MIN_FRAMES_FOR_ROTATION_PRIOR = 3
+
 
 @dataclass
 class FrameMeasurement:
@@ -156,13 +161,25 @@ def characterize_sensor(
     fovs = np.array([m.fov_degrees for m in measured])
     rolls = np.radians([m.roll_deg for m in measured])
     depths = [m.depth_g for m in measured if m.depth_g is not None]
-    parity = int(np.sign(np.median([m.parity for m in measured])) or 1)
+    # Majority vote on parity. A genuine tie (even split) is ambiguous, not +1 —
+    # surface it; the cascade searches both parities regardless, so this is
+    # telemetry, but a silent default would mask half the frames disagreeing.
+    parity_sum = int(sum(m.parity for m in measured))
+    if parity_sum == 0:
+        logger.warning("characterize: parity vote tied across %d frames — defaulting to +1 "
+                       "(telemetry only; the cascade searches both parities)", len(measured))
+        parity = 1
+    else:
+        parity = 1 if parity_sum > 0 else -1
 
-    # Rotation prior only if the field rotation is actually stable frame-to-frame
-    # (equatorial mounts); alt-az/steerable sensors rotate per-frame -> None.
+    # Rotation prior only if the field rotation is actually stable across enough
+    # frames (equatorial mounts); alt-az/steerable sensors rotate per-frame, and
+    # 1-2 frames can't establish stability -> None.
     c, s = np.mean(np.cos(rolls)), np.mean(np.sin(rolls))
     roll_spread_deg = math.degrees(math.sqrt(max(0.0, -2 * math.log(max(1e-12, math.hypot(c, s))))))
-    rotation_prior = float(math.degrees(math.atan2(s, c)) % 360.0) if roll_spread_deg < 2.0 else None
+    rotation_prior = None
+    if len(measured) >= MIN_FRAMES_FOR_ROTATION_PRIOR and roll_spread_deg < 2.0:
+        rotation_prior = float(math.degrees(math.atan2(s, c)) % 360.0)
 
     fov = float(np.median(fovs))
     profile = SensorProfile(

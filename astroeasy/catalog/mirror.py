@@ -42,6 +42,32 @@ def load_mirror_index(mirror_dir: str) -> dict[str, Any]:
         return json.load(fh)
 
 
+def read_tile(mirror_dir: str, filename: str) -> np.ndarray:
+    """Read one mirror tile as a ``MIRROR_DTYPE`` array, with integrity checks.
+
+    ``np.fromfile`` would raise a bare ``FileNotFoundError`` for a tile that
+    ``index.json`` references but isn't on disk (unmounted/incomplete mirror),
+    and would *silently* drop a trailing partial record from a truncated tile.
+    Both fail confusingly far from the cause, so we surface them here: a clear
+    error for a missing tile, a warning for a non-record-aligned size.
+    """
+    path = os.path.join(mirror_dir, filename)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Gaia mirror tile missing: {path} — index.json references it but it is "
+            "not on disk (mirror unmounted or incomplete?)"
+        )
+    itemsize = MIRROR_DTYPE.itemsize
+    remainder = os.path.getsize(path) % itemsize
+    if remainder:
+        logger.warning(
+            "Gaia mirror tile %s is not a multiple of the %d-byte record "
+            "(%d trailing bytes) — reading whole records only (truncated/corrupt?)",
+            filename, itemsize, remainder,
+        )
+    return np.fromfile(path, dtype=MIRROR_DTYPE)
+
+
 def _ra_subranges(min_ra: float, max_ra: float) -> list[tuple[float, float]]:
     """Normalize the RA box to [0,360), splitting across the 0/360 seam if needed."""
     lo, hi = np.mod(min_ra, 360.0), np.mod(max_ra, 360.0)
@@ -96,7 +122,7 @@ def query_mirror_box(
         logger.info("Gaia mirror: no tiles overlap the requested box")
         return np.empty(0, dtype=MIRROR_DTYPE)
 
-    parts = [np.fromfile(os.path.join(mirror_dir, m["file"]), dtype=MIRROR_DTYPE) for m in chosen]
+    parts = [read_tile(mirror_dir, m["file"]) for m in chosen]
     a = np.concatenate(parts) if len(parts) > 1 else parts[0]
 
     mask = (a["dec"] >= min_dec) & (a["dec"] <= max_dec)

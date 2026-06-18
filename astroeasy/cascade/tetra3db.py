@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
-from astroeasy.catalog.mirror import MIRROR_DTYPE, load_mirror_index
+from astroeasy.catalog.mirror import load_mirror_index, read_tile
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ def write_tyc_main(mirror_dir: str, out_path: Path | str, mag_limit: float) -> i
     written = 0
     with open(out_path, "w") as fh:
         for i, meta in enumerate(tiles.values()):
-            arr = np.fromfile(os.path.join(mirror_dir, meta["file"]), dtype=MIRROR_DTYPE)
+            arr = read_tile(mirror_dir, meta["file"])
             m = (np.isfinite(arr["g"]) & (arr["g"] <= mag_limit)
                  & np.isfinite(arr["ra"]) & np.isfinite(arr["dec"]))
             if not m.any():

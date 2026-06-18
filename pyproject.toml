@@ -3,7 +3,7 @@ name = "astroeasy"
 authors = [
   { name="Zach", email="jzg@alum.mit.edu" },
 ]
-version = "1.1.0"
+version = "1.2.0"
 description = "Astrometry.net made easy - plate solving and index management"
 readme = "README.md"
 requires-python = ">=3.11"

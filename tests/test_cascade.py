@@ -365,7 +365,7 @@ class TestCharacterize:
 
         md = ImageMetadata(width=W, height=H, boresight_ra=RA0, boresight_dec=DEC0)
         result = characterize_sensor(
-            [(detections, md), (detections, md)],
+            [(detections, md), (detections, md), (detections, md)],
             AstrometryConfig(indices_path="/stock"),
             sensor_id="synth", out_dir=tmp_path, mirror_dir=mirror_dir,
             build_db=False,
@@ -374,8 +374,31 @@ class TestCharacterize:
         assert p.pixel_scale_arcsec == pytest.approx(SCALE_ASEC, rel=1e-3)
         assert p.fov_degrees == pytest.approx(FOV_DEG, rel=1e-3)
         assert p.parity == 1
-        assert p.rotation_prior_deg is not None  # identical frames -> stable roll
+        assert p.rotation_prior_deg is not None  # 3 stable frames -> rotation prior
         assert p.mag_depth_g is not None and 13.0 < p.mag_depth_g < 15.5
         assert (tmp_path / "synth.yaml").exists()
         loaded = SensorProfile.from_yaml(tmp_path / "synth.yaml")
         assert loaded.sensor_id == "synth"
+
+    def test_too_few_frames_no_rotation_prior(self, detections, mirror_dir, tmp_path,
+                                              truth_wcs, monkeypatch):
+        """A 1-2 frame characterization must not emit a (degenerate) rotation prior."""
+        import astroeasy.runner as runner
+        from astroeasy.config import AstrometryConfig
+
+        def fake_solve_field(dets, md, config, existing_wcs=None):
+            return SolveResult(success=True, status=WCSStatus.SUCCESS,
+                               wcs=awcs_to_wcsresult(truth_wcs, W, H),
+                               matched_stars=[], detections=dets, image_metadata=md)
+
+        monkeypatch.setattr(runner, "solve_field", fake_solve_field)
+        from astroeasy.cascade.characterize import characterize_sensor
+
+        md = ImageMetadata(width=W, height=H)
+        result = characterize_sensor(
+            [(detections, md)],  # single frame -> spread is degenerately 0
+            AstrometryConfig(indices_path="/stock"),
+            sensor_id="single", out_dir=tmp_path, mirror_dir=mirror_dir,
+            build_db=False,
+        )
+        assert result.profile.rotation_prior_deg is None

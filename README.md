@@ -10,6 +10,13 @@ Astrometry.net made easy - a standalone Python package for plate-solving with co
 pip install astroeasy
 ```
 
+Optional extras (only if you need them — the core install is unchanged):
+
+```sh
+pip install "astroeasy[catalog]"   # online Gaia queries (astroquery)
+pip install "astroeasy[cascade]"   # catalog-native fast solving (see below)
+```
+
 ## Quick Start
 
 ```python
@@ -157,6 +164,71 @@ astroeasy test-install --docker astrometry-cli
 # Test local installation
 astroeasy test-install --local
 ```
+
+## Fast Solving (cascade)
+
+> **Optional and fully additive.** Everything above is unchanged. If you use
+> astroeasy for astrometry.net plate solving, you can ignore this section — the
+> cascade lives behind `pip install "astroeasy[cascade]"` and the
+> `astroeasy.cascade` namespace, and `solve_field` behaves exactly as before
+> whether or not the extra is installed.
+
+For a fixed camera that solves many frames, the cascade trades a one-time setup
+for sub-second, network-free solves. It escalates cheapest-first and only ever
+returns a solution that clears a likelihood-based acceptance gate (so a
+confident-but-wrong match is rejected, not returned):
+
+- **T0** — refine from a prior/propagated WCS or a boresight hint (fastest).
+- **T1** — [tetra3](https://github.com/smroid/cedar-solve) lost-in-space pattern
+  match against a local pattern DB (vendored; see `astroeasy/_vendor/README.md`).
+- **T3/T4** — the standard `solve_field` astrometry.net backstop (hinted, then
+  blind). The cascade never fails a frame astrometry.net would have solved.
+
+The native tiers read stars from a local **Gaia mirror** (HEALPix-tiled binary,
+queried offline) rather than the network. Build the mirror with your own Gaia
+export; the readers live in `astroeasy.catalog.mirror`.
+
+### One-time setup per sensor
+
+```sh
+# Characterize a sensor from a few blind-solved sidereal frames: measures
+# scale / FoV / rotation / depth, writes a SensorProfile, and builds the
+# tetra3 pattern DB. (Needs stock indices for the blind pass + a Gaia mirror.)
+astroeasy characterize frame1.fits frame2.fits frame3.fits \
+    --sensor-id dao01 --out profiles/ \
+    --indices-path /data/indices/4200 --mirror /data/gaia-mirror
+
+# Or build artifacts directly:
+astroeasy build-tetra3-db --mirror /data/gaia-mirror --out dao01.npz --fov 2.0
+astroeasy build-index     --mirror /data/gaia-mirror --out dao01_index/ --fov 2.0 --depth 16
+```
+
+### Solving
+
+```python
+from astroeasy.cascade import solve
+from astroeasy.cascade.profile import SensorProfile
+
+profile = SensorProfile.from_yaml("profiles/dao01.yaml")
+result = solve(
+    detections, metadata,
+    profile=profile,
+    mirror_dir="/data/gaia-mirror",      # enables the native tiers + gate
+    dotnet_config=config,                # the astrometry.net backstop (optional)
+    prior_wcs=previous_solution,         # enables the fast T0 path (optional)
+)
+
+if result.solve.success:
+    print(f"solved via {result.tier}: {result.solve.wcs.center_ra:.4f}, "
+          f"{result.solve.wcs.center_dec:.4f}")
+# result.attempts holds per-tier telemetry (gate scores, timings)
+```
+
+`solve()` returns a `CascadeResult` wrapping a standard `SolveResult` (`.solve`)
+plus the winning `.tier` and per-tier `.attempts`. With no mirror, no profile
+artifacts, and only a `dotnet_config`, it degrades to a plain astrometry.net
+solve. See [`docs/catalog-native-solving-roadmap.md`](docs/catalog-native-solving-roadmap.md)
+for the design.
 
 ## Configuration
 

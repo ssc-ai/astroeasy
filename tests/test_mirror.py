@@ -12,6 +12,7 @@ from astroeasy.catalog.mirror import (
     load_mirror_index,
     query_gaia_field_local,
     query_mirror_box,
+    read_tile,
 )
 
 
@@ -46,6 +47,31 @@ def mirror_dir(tmp_path):
     (tmp_path / "index.json").write_text(json.dumps(index))
     load_mirror_index.cache_clear()
     return str(tmp_path)
+
+
+class TestReadTile:
+    def test_reads_records(self, mirror_dir):
+        arr = read_tile(mirror_dir, "tile_a.bin")
+        assert arr.dtype == MIRROR_DTYPE
+        assert sorted(arr["source_id"]) == [1, 2, 3, 4]
+
+    def test_missing_tile_raises_clear_error(self, mirror_dir):
+        with pytest.raises(FileNotFoundError, match="mirror tile missing"):
+            read_tile(mirror_dir, "does_not_exist.bin")
+
+    def test_truncated_tile_warns_and_drops_partial(self, tmp_path, caplog):
+        # Write 2 whole records plus a half-record tail.
+        good = np.array(
+            [(1, 10.0, 5.0, 8.0, 8.5, 7.5, 0.0, 0.0),
+             (2, 11.0, 5.0, 9.0, 9.5, 8.5, 0.0, 0.0)],
+            dtype=MIRROR_DTYPE,
+        )
+        raw = good.tobytes() + b"\x00" * (MIRROR_DTYPE.itemsize // 2)
+        (tmp_path / "t.bin").write_bytes(raw)
+        with caplog.at_level("WARNING"):
+            arr = read_tile(str(tmp_path), "t.bin")
+        assert len(arr) == 2  # partial tail dropped, whole records kept
+        assert any("trailing bytes" in r.message for r in caplog.records)
 
 
 class TestRaSubranges:
