@@ -58,7 +58,14 @@ class TestZscale:
 
     def test_contrast_parameter(self):
         """Test that contrast parameter affects output."""
-        data = np.random.randn(50, 50) * 100 + 1000
+        # Seed locally and use a realistic frame (faint background + a few
+        # bright sources). Unseeded pure Gaussian noise occasionally makes the
+        # two contrast stretches compare equal (flaky); a heavy-tailed field
+        # makes the contrast dependence deterministic.
+        rng = np.random.default_rng(0)
+        data = rng.standard_normal((50, 50)).astype(np.float32) * 10 + 100
+        for r, c, v in [(5, 5, 3000), (40, 12, 5000), (25, 30, 8000), (10, 45, 2000)]:
+            data[r, c] = v
         result1 = zscale(data, contrast=0.1)
         result2 = zscale(data, contrast=0.5)
         # Different contrast should give different results

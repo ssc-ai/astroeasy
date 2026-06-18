@@ -3,7 +3,7 @@ name = "astroeasy"
 authors = [
   { name="Zach", email="jzg@alum.mit.edu" },
 ]
-version = "1.1.0"
+version = "1.2.0"
 description = "Astrometry.net made easy - plate solving and index management"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,11 @@ dependencies = [
 [project.optional-dependencies]
 catalog = [
     "astroquery>=0.4",
+]
+cascade = [
+    # Deps for the vendored tetra3 (astroeasy/_vendor) + the cascade tiers.
+    "scipy>=1.7",
+    "pillow>=8.3",
 ]
 dev = [
     "build>=1.4.0",
@@ -80,6 +85,7 @@ exclude_lines = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["astroeasy/_vendor"]
 
 [tool.ruff.lint]
 select = [

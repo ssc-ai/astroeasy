@@ -210,3 +210,9 @@ __marimo__/
 tests/data/*.fits
 tests/data/*.txt
 !tests/data/manifest.json
+
+# Project guidance file: kept local, not tracked
+CLAUDE.md
+
+# Benchmarks: large data, caches, vendored sources — local only
+benchmarks/

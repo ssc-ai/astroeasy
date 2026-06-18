@@ -808,6 +808,68 @@ def _is_numeric(s: str) -> bool:
         return False
 
 
+def cmd_build_tetra3_db(args: argparse.Namespace) -> int:
+    """Build a tetra3 pattern DB from the local Gaia mirror (cascade WS-I)."""
+    from astroeasy.cascade.tetra3db import build_tetra3_db
+
+    path = build_tetra3_db(
+        args.mirror, args.out,
+        max_fov_deg=args.fov, mag_limit=args.mag_limit, force=args.force,
+    )
+    print(f"tetra3 DB: {path}")
+    return 0
+
+
+def cmd_build_index(args: argparse.Namespace) -> int:
+    """Build custom astrometry.net indices from the local Gaia mirror (cascade WS-B)."""
+    from astroeasy.cascade.index_build import build_custom_index
+    from astroeasy.indices import scales_for_fov
+
+    scales = scales_for_fov(args.fov)
+    print(f"building scales {scales} at G<={args.depth} -> {args.out}")
+    paths = build_custom_index(
+        args.mirror, args.out,
+        scales=scales, depth_g=args.depth,
+        docker_image=args.docker, force=args.force,
+    )
+    for p in paths:
+        print(f"  {p}")
+    print(f'use with: indices_path={args.out} indices_series="CUSTOM"')
+    return 0
+
+
+def cmd_characterize(args: argparse.Namespace) -> int:
+    """Characterize a sensor from blind solves of sidereal frames (cascade WS-G)."""
+    from astroeasy.cascade.characterize import characterize_sensor
+
+    config = AstrometryConfig(
+        indices_path=Path(args.indices_path),
+        indices_series=args.indices_series,
+        docker_image=args.docker,
+        min_width_degrees=args.scale_low,
+        max_width_degrees=args.scale_high,
+        cpulimit_seconds=args.cpulimit,
+    )
+    result = characterize_sensor(
+        args.fits, config,
+        sensor_id=args.sensor_id, out_dir=args.out, mirror_dir=args.mirror,
+        build_db=not args.no_db, db_mag=args.db_mag, build_index=args.build_index,
+    )
+    p = result.profile
+    print(f"sensor {p.sensor_id}: {len(result.frames)}/{len(args.fits)} frames solved")
+    print(f"  pixel scale : {p.pixel_scale_arcsec:.4f} arcsec/px")
+    print(f"  fov         : {p.fov_degrees:.4f} deg  (bounds {p.scale_bounds_degrees})")
+    print(f"  rotation    : {p.rotation_prior_deg if p.rotation_prior_deg is not None else 'per-frame (no prior)'}")
+    print(f"  parity      : {p.parity:+d}")
+    print(f"  depth       : {f'G{p.mag_depth_g:.1f}' if p.mag_depth_g else 'unmeasured'}")
+    if result.tetra3_db_path:
+        print(f"  tetra3 DB   : {result.tetra3_db_path}")
+    if result.custom_index_dir:
+        print(f"  custom index: {result.custom_index_dir}")
+    print(f"  profile     : {Path(args.out) / (p.sensor_id + '.yaml')}")
+    return 0
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1107,6 +1169,54 @@ def main() -> int:
         help="Test local installation (default if --docker not specified)",
     )
 
+    # build-tetra3-db subcommand (cascade / WS-I)
+    t3db_parser = subparsers.add_parser(
+        "build-tetra3-db",
+        help="Build a tetra3 pattern DB from a local Gaia mirror (cascade T1)",
+    )
+    t3db_parser.add_argument("--mirror", required=True, help="Local Gaia mirror directory")
+    t3db_parser.add_argument("--out", required=True, help="Output DB path (.npz)")
+    t3db_parser.add_argument("--fov", type=float, required=True, help="Sensor field width (deg)")
+    t3db_parser.add_argument(
+        "--mag-limit", type=float, default=None,
+        help="Catalog depth (default: FoV-driven heuristic)",
+    )
+    t3db_parser.add_argument("--force", action="store_true", help="Rebuild even if cached")
+
+    # build-index subcommand (cascade / WS-B)
+    bidx_parser = subparsers.add_parser(
+        "build-index",
+        help="Build custom scale-matched astrometry.net indices from a local Gaia mirror",
+    )
+    bidx_parser.add_argument("--mirror", required=True, help="Local Gaia mirror directory")
+    bidx_parser.add_argument("--out", required=True, help="Output indices directory")
+    bidx_parser.add_argument("--fov", type=float, required=True, help="Sensor field width (deg)")
+    bidx_parser.add_argument("--depth", type=float, required=True, help="Star depth (G mag)")
+    bidx_parser.add_argument("--docker", type=str, default=None, help="astrometry-cli image")
+    bidx_parser.add_argument("--force", action="store_true", help="Rebuild even if cached")
+
+    # characterize subcommand (cascade / WS-G)
+    char_parser = subparsers.add_parser(
+        "characterize",
+        help="Blind-solve sidereal frames, measure the sensor, write a profile + artifacts",
+    )
+    char_parser.add_argument("fits", nargs="+", help="Sidereal FITS frames")
+    char_parser.add_argument("--sensor-id", required=True, help="Profile name (e.g. dao01)")
+    char_parser.add_argument("--out", required=True, help="Output dir (profile + artifacts)")
+    char_parser.add_argument("--indices-path", required=True, help="STOCK indices for blind solving")
+    char_parser.add_argument("--indices-series", default="4200", help="Stock series (default 4200)")
+    char_parser.add_argument("--docker", type=str, default=None, help="astrometry-cli image")
+    char_parser.add_argument("--mirror", default=None, help="Local Gaia mirror (depth + artifacts)")
+    char_parser.add_argument("--scale-low", type=float, default=0.1, help="Blind scale low (deg)")
+    char_parser.add_argument("--scale-high", type=float, default=30.0, help="Blind scale high (deg)")
+    char_parser.add_argument("--cpulimit", type=int, default=300, help="Per-frame CPU limit (s)")
+    char_parser.add_argument("--no-db", action="store_true", help="Skip tetra3 DB build")
+    char_parser.add_argument("--db-mag", type=float, default=None, help="tetra3 DB depth override")
+    char_parser.add_argument(
+        "--build-index", action="store_true",
+        help="Also build a custom astrometry.net index (slow; needs --mirror)",
+    )
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -1130,6 +1240,12 @@ def main() -> int:
         return cmd_plot(args)
     elif args.command == "test-install":
         return cmd_test_install(args)
+    elif args.command == "build-tetra3-db":
+        return cmd_build_tetra3_db(args)
+    elif args.command == "build-index":
+        return cmd_build_index(args)
+    elif args.command == "characterize":
+        return cmd_characterize(args)
     else:
         parser.print_help()
         return 0
