@@ -55,9 +55,9 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [project.urls]
-Homepage = "https://github.com/zgazak/astroeasy"
-Issues = "https://github.com/zgazak/astroeasy/issues"
-Documentation = "https://github.com/zgazak/astroeasy#readme"
+Homepage = "https://github.com/ssc-ai/astroeasy"
+Issues = "https://github.com/ssc-ai/astroeasy/issues"
+Documentation = "https://github.com/ssc-ai/astroeasy#readme"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

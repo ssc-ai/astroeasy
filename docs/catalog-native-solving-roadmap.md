@@ -183,7 +183,7 @@ What already exists, so the plan reuses rather than rebuilds.
 - `engine/utils/propagate_wcs.py`, `wcs_ops.py`, `wcs_helpers.py` — shift/propagate
   WCS, match stars to detections, MAD outlier rejection, SIP refit. T0/T1 plumbing.
 
-### Local Gaia mirror (`/media/zgazak/1TB/data/gaia_g21/mirror/`)
+### Local Gaia mirror (`<path-to>/gaia_g21/mirror/`)
 - **1,736,684,054 stars**, G≤21, 72 GB, **3072 HEALPix level-4 tiles** (~3.7°),
   bbox `index.json`, fixed-width records:
   ```
