@@ -4,7 +4,7 @@
 
 ```bash
 # Clone the repo
-git clone https://github.com/zgazak/astroeasy.git
+git clone https://github.com/ssc-ai/astroeasy.git
 cd astroeasy
 
 # Install with dev dependencies

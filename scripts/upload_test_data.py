@@ -46,7 +46,7 @@ def load_manifest() -> dict:
     if MANIFEST_PATH.exists():
         with open(MANIFEST_PATH) as f:
             return json.load(f)
-    return {"release_tag": "test-data-v1", "repo": "zgazak/astroeasy", "files": []}
+    return {"release_tag": "test-data-v1", "repo": "ssc-ai/astroeasy", "files": []}
 
 
 def save_manifest(manifest: dict) -> None:
@@ -136,7 +136,7 @@ def main() -> int:
     parser.add_argument(
         "--repo",
         default=None,
-        help="GitHub repo (default: from manifest or zgazak/astroeasy)",
+        help="GitHub repo (default: from manifest or ssc-ai/astroeasy)",
     )
     args = parser.parse_args()
 
@@ -149,7 +149,7 @@ def main() -> int:
 
     # Load manifest
     manifest = load_manifest()
-    repo = args.repo or manifest.get("repo", "zgazak/astroeasy")
+    repo = args.repo or manifest.get("repo", "ssc-ai/astroeasy")
     tag = args.tag or manifest.get("release_tag", "test-data-v1")
 
     print(f"Uploading test data to {repo} release {tag}...")

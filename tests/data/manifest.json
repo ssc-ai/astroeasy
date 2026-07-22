@@ -1,6 +1,6 @@
 {
   "release_tag": "test-data-v1",
-  "repo": "zgazak/astroeasy",
+  "repo": "ssc-ai/astroeasy",
   "files": [
     {
       "name": "example_data.fits",
