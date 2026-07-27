@@ -24,6 +24,11 @@ class AstrometryConfig:
         min_sources_for_attempt: Minimum sources required to attempt solving. Defaults to 4.
         docker_image: Docker image name for containerized execution. None = local.
         output_dir: Directory for output files. None = use temp directory.
+        release_index_page_cache: After each solve, advise the OS to drop the index files'
+            page cache (POSIX_FADV_DONTNEED) so repeated solves do not accumulate the whole
+            index in resident memory. Defaults to True. Set False to opt out (e.g. when the
+            same sky region is solved repeatedly and re-faulting the tiles costs more than the
+            memory). No effect on platforms without posix_fadvise (macOS, Windows).
     """
 
     # Required
@@ -39,6 +44,7 @@ class AstrometryConfig:
     min_sources_for_attempt: int = 4
     docker_image: str | None = None
     output_dir: Path | None = None
+    release_index_page_cache: bool = True
 
     def __post_init__(self):
         """Convert string paths to Path objects."""
@@ -96,6 +102,7 @@ class AstrometryConfig:
             min_sources_for_attempt=data.get("min_sources_for_attempt", 4),
             docker_image=data.get("docker_image"),
             output_dir=Path(data["output_dir"]) if data.get("output_dir") else None,
+            release_index_page_cache=data.get("release_index_page_cache", True),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,6 +122,7 @@ class AstrometryConfig:
             "min_sources_for_attempt": self.min_sources_for_attempt,
             "docker_image": self.docker_image,
             "output_dir": str(self.output_dir) if self.output_dir else None,
+            "release_index_page_cache": self.release_index_page_cache,
         }
 
     def to_yaml(self, path: Path | str) -> None:

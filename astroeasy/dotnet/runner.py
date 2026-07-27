@@ -1,6 +1,7 @@
 """Core solve-field orchestration for astrometry.net."""
 
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,6 +22,37 @@ from astroeasy.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _release_index_page_cache(indices_path: Path | None) -> None:
+    """Release the astrometry index files' cached pages after a solve.
+
+    ``solve-field`` memory-maps the index tiles it reads, and the kernel keeps those pages
+    resident in the OS page cache after the subprocess exits. Across many solves that sweep the
+    sky the resident set grows without bound toward the full index size, which presents as a slow
+    memory leak for long-lived services. Advising ``POSIX_FADV_DONTNEED`` drops the clean cached
+    pages; the next solve simply re-faults the tiles it needs. Only clean pages are dropped, so
+    this is lossless.
+
+    No-op on platforms without ``posix_fadvise`` (e.g. macOS, Windows) or when no index path is
+    configured.
+
+    Args:
+        indices_path: Directory containing the astrometry.net index files, or ``None``.
+    """
+    if indices_path is None or not hasattr(os, "posix_fadvise"):
+        return
+    for index_file in Path(indices_path).glob("**/*.fits"):
+        try:
+            fd = os.open(index_file, os.O_RDONLY)
+        except OSError:
+            continue
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
 
 
 def _write_astrometry_cfg(config: AstrometryConfig, indices_path: str, output_path: Path) -> None:
@@ -352,6 +384,11 @@ def solve_field_image(
         )
 
     finally:
+        # Release the index page cache faulted in by solve-field so repeated solves do not
+        # accumulate the whole index in memory (see _release_index_page_cache). Opt out via
+        # config.release_index_page_cache.
+        if config.release_index_page_cache:
+            _release_index_page_cache(config.indices_path)
         # Cleanup
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -481,6 +518,11 @@ def solve_field(
         )
 
     finally:
+        # Release the index page cache faulted in by solve-field so repeated solves do not
+        # accumulate the whole index in memory (see _release_index_page_cache). Opt out via
+        # config.release_index_page_cache.
+        if config.release_index_page_cache:
+            _release_index_page_cache(config.indices_path)
         # Cleanup
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)

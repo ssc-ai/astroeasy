@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-27
+
+### Fixed
+
+- **Index page-cache growth during repeated solves.** `solve-field` memory-maps the
+  index tiles it reads, and the kernel keeps those pages resident in the OS page cache
+  after the subprocess exits. A long-lived process that solves many frames sweeping the
+  sky accumulated resident index pages without bound (toward the full index size),
+  presenting as a slow memory leak. After each solve the index files are now advised
+  `POSIX_FADV_DONTNEED`, dropping the clean cached pages; the next solve re-faults only
+  the tiles it needs. Only clean pages are dropped, so the behavior is lossless, and it is
+  a no-op on platforms without `posix_fadvise` (e.g. macOS, Windows). Enabled by default;
+  opt out per-config with `AstrometryConfig.release_index_page_cache = False`.
+
 ## [1.2.0] - 2026-06-18
 
 ### Added
