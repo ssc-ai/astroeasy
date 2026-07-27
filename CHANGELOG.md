@@ -15,7 +15,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   presenting as a slow memory leak. After each solve the index files are now advised
   `POSIX_FADV_DONTNEED`, dropping the clean cached pages; the next solve re-faults only
   the tiles it needs. Only clean pages are dropped, so the behavior is lossless, and it is
-  a no-op on platforms without `posix_fadvise` (e.g. macOS, Windows).
+  a no-op on platforms without `posix_fadvise` (e.g. macOS, Windows). Enabled by default;
+  opt out per-config with `AstrometryConfig.release_index_page_cache = False`.
 
 ## [1.2.0] - 2026-06-18
 

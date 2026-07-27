@@ -385,8 +385,10 @@ def solve_field_image(
 
     finally:
         # Release the index page cache faulted in by solve-field so repeated solves do not
-        # accumulate the whole index in memory (see _release_index_page_cache).
-        _release_index_page_cache(config.indices_path)
+        # accumulate the whole index in memory (see _release_index_page_cache). Opt out via
+        # config.release_index_page_cache.
+        if config.release_index_page_cache:
+            _release_index_page_cache(config.indices_path)
         # Cleanup
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -517,8 +519,10 @@ def solve_field(
 
     finally:
         # Release the index page cache faulted in by solve-field so repeated solves do not
-        # accumulate the whole index in memory (see _release_index_page_cache).
-        _release_index_page_cache(config.indices_path)
+        # accumulate the whole index in memory (see _release_index_page_cache). Opt out via
+        # config.release_index_page_cache.
+        if config.release_index_page_cache:
+            _release_index_page_cache(config.indices_path)
         # Cleanup
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)

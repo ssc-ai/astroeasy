@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+import astroeasy.dotnet.runner as runner
+from astroeasy import AstrometryConfig, Detection, ImageMetadata
 from astroeasy.dotnet.runner import _release_index_page_cache
 
 
@@ -74,3 +76,38 @@ def test_release_is_noop_without_posix_fadvise(
 def test_release_is_noop_for_none_path() -> None:
     """A ``None`` indices path (e.g. some Docker setups) is a safe no-op."""
     _release_index_page_cache(None)  # must not raise
+
+
+def test_release_index_page_cache_defaults_on_and_roundtrips(tmp_path: Path) -> None:
+    """The opt-out flag defaults to True and round-trips through to_dict/from_dict."""
+    cfg = AstrometryConfig(indices_path=tmp_path)
+    assert cfg.release_index_page_cache is True
+    restored = AstrometryConfig.from_dict({**cfg.to_dict(), "release_index_page_cache": False})
+    assert restored.release_index_page_cache is False
+
+
+def _detections(n: int = 8) -> list[Detection]:
+    """Return ``n`` synthetic detections (enough to attempt a solve)."""
+    return [Detection(x=float(10 * i), y=float(8 * i), flux=float(1000 - i)) for i in range(n)]
+
+
+@pytest.mark.parametrize("release_enabled", [True, False])
+def test_solve_field_respects_release_opt_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, release_enabled: bool
+) -> None:
+    """solve_field releases the index page cache only when release_index_page_cache is True.
+
+    The real solve is stubbed out (``run_against_local`` -> False) and the release helper is
+    spied, so this exercises only the config-gated call in the ``finally`` block.
+    """
+    calls: list[object] = []
+    monkeypatch.setattr(runner, "_release_index_page_cache", lambda p: calls.append(p))
+    monkeypatch.setattr(runner, "run_against_local", lambda *a, **k: False)
+
+    cfg = AstrometryConfig(indices_path=tmp_path, release_index_page_cache=release_enabled)
+    runner.solve_field(_detections(), ImageMetadata(width=1024, height=1024), cfg)
+
+    if release_enabled:
+        assert calls, "release must run when release_index_page_cache is True"
+    else:
+        assert calls == [], "release must be skipped when release_index_page_cache is False"
