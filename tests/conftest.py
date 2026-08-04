@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +15,12 @@ from astroeasy.runner import test_install
 # Test data directory
 TEST_DATA_DIR = Path(__file__).parent / "data"
 
-# Default test indices path - can be overridden via environment variable
-DEFAULT_INDICES_PATH = Path("/stars/data/share/5000/5200-LITE")
+# Astrometry.net index files (5200-LITE series). Override with
+# ASTROEASY_TEST_INDICES if yours live elsewhere; tests needing indices skip
+# themselves when the path holds no *.fits.
+DEFAULT_INDICES_PATH = Path(
+    os.environ.get("ASTROEASY_TEST_INDICES", "/stars/data/share/5000/5200-LITE")
+)
 
 
 def _check_local_install() -> bool:

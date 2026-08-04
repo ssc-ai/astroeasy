@@ -7,9 +7,9 @@
 git clone https://github.com/ssc-ai/astroeasy.git
 cd astroeasy
 
-# Install with dev dependencies
+# Install with dev dependencies and all extras
 uv sync
-uv pip install -e ".[dev]"
+make install-dev
 
 # Fetch test data (required before running tests)
 make fetch-test-data
@@ -63,6 +63,43 @@ To add new test data files, edit `scripts/upload_test_data.py` and add the filen
 
 - `tests/data/manifest.json` - Tracked in git; contains checksums and release tag
 - `tests/data/*.fits`, `tests/data/*.txt` - Gitignored; downloaded from release
+
+## Astrometry.net Index Files
+
+Some tests solve real fields and need astrometry.net index files (the 5200-LITE
+series). These are far too large for the repo and are **not** downloaded by
+`make fetch-test-data` — you supply them yourself. Tests that need them skip
+cleanly when they are absent, so a fresh clone still runs green.
+
+The default location is `/stars/data/share/5000/5200-LITE`. Point elsewhere with:
+
+```bash
+export ASTROEASY_TEST_INDICES=/path/to/your/5200-LITE
+make test
+```
+
+A directory counts as usable when it contains at least one `*.fits` file.
+
+You do **not** mount anything into the Docker container by hand. When
+`docker_image` is set, astroeasy bind-mounts the host index directory to
+`/usr/local/astrometry/data` inside the container and writes a matching
+`astrometry.cfg` — see `astroeasy/dotnet/docker.py`. The host path is the only
+knob.
+
+Index-dependent tests come in two flavours:
+
+- **Docker** (`requires_docker_install`) - needs the `astrometry-cli` image;
+  build it with `make build-docker`.
+- **Local** (`requires_local_install`) - needs `solve-field` on your `PATH`.
+  Skipping these is fine if you work through Docker.
+
+### Other opt-in tests
+
+The tetra3 cascade tests build a pattern database (~10s) and are off by default:
+
+```bash
+ASTROEASY_TETRA3_TESTS=1 make test
+```
 
 ## Code Quality
 
