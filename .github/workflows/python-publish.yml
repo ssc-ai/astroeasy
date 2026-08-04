@@ -87,12 +87,8 @@ jobs:
           test -f "dist/astroeasy-${VERSION}.tar.gz" || {
             echo "::error::Expected dist/astroeasy-${VERSION}.tar.gz, got: $(ls dist/)"; exit 1; }
 
-      - name: Verify vendored tetra3 Apache-2.0 license ships in the wheel
-        run: |
-          python -m zipfile -l "dist/astroeasy-${VERSION}-py3-none-any.whl" \
-            | grep -q "astroeasy/_vendor/tetra3/LICENSE.txt" || {
-              echo "::error::astroeasy/_vendor/tetra3/LICENSE.txt is missing from the wheel. Apache-2.0 requires the license to be redistributed with the vendored code."; exit 1; }
-          echo "Vendored license present in wheel"
+      # The vendored tetra3 Apache-2.0 license check lives in ci.yml, which runs
+      # on every PR to main/dev -- no need to repeat it per release.
 
       - name: Check distribution metadata
         run: |
