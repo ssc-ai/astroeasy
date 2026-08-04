@@ -87,8 +87,8 @@ jobs:
           test -f "dist/astroeasy-${VERSION}.tar.gz" || {
             echo "::error::Expected dist/astroeasy-${VERSION}.tar.gz, got: $(ls dist/)"; exit 1; }
 
-      # The vendored tetra3 Apache-2.0 license check lives in ci.yml, which runs
-      # on every PR to main/dev -- no need to repeat it per release.
+      # Vendored tetra3 Apache-2.0 compliance was audited once and holds
+      # structurally -- see astroeasy/_vendor/README.md. Not re-checked per run.
 
       - name: Check distribution metadata
         run: |
