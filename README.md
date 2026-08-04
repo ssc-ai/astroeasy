@@ -1,6 +1,11 @@
 # astroeasy
 
-![Tests](tests.svg) ![Coverage](coverage.svg)
+<!-- Absolute URLs: PyPI renders this README standalone and cannot resolve
+     paths relative to the repo, so relative badge links 404 there. -->
+[![Tests](https://raw.githubusercontent.com/ssc-ai/astroeasy/main/tests.svg)](https://github.com/ssc-ai/astroeasy/actions/workflows/ci.yml)
+[![Coverage](https://raw.githubusercontent.com/ssc-ai/astroeasy/main/coverage.svg)](https://github.com/ssc-ai/astroeasy/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/astroeasy.svg)](https://pypi.org/project/astroeasy/)
+[![Python](https://img.shields.io/pypi/pyversions/astroeasy.svg)](https://pypi.org/project/astroeasy/)
 
 Astrometry.net made easy - a standalone Python package for plate-solving with containerized execution, clean API, and indices management.
 

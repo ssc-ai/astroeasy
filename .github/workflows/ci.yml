@@ -1,0 +1,92 @@
+# Lint, test, and build-check on every push and pull request.
+#
+# Uses uv with the committed uv.lock so CI runs the same tool versions as
+# `make lint` / `make test` locally. Installing tools unpinned lets a new ruff
+# release turn CI red on untouched code.
+#
+# Tests needing astrometry.net, Docker, or index files skip themselves (see
+# tests/conftest.py). Test data is NOT in git -- it is fetched from a release.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Lint
+        run: uv run ruff check astroeasy/
+        # NOTE: `ruff format --check` is deliberately not run -- 15 files are
+        # not currently format-clean. Run `make format` and commit that
+        # separately, then add the check here.
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # Sets UV_PYTHON, so `uv sync` and `uv run` agree. Passing --python
+          # to sync alone is not enough: a later bare `uv run` re-resolves to
+          # uv's default interpreter and silently rebuilds the venv without
+          # the extras.
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install locked dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Fetch test data
+        # tests/data/*.fits and *.txt are gitignored and live in the
+        # test-data-v1 release. Fixtures error rather than skip without them.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/fetch_test_data.py
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      # Vendored tetra3 Apache-2.0 compliance was audited once and holds
+      # structurally -- see astroeasy/_vendor/README.md. Not re-checked per run.

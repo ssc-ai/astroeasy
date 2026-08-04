@@ -40,7 +40,9 @@ install:
 	uv pip install -e .
 
 install-dev:
-	uv pip install -e ".[dev]"
+	# All extras, not just [dev]: the cascade tests need scipy/pillow from
+	# [cascade], and they fail rather than skip when it is missing.
+	uv pip install -e ".[catalog,cascade,dev]"
 
 # Test data management
 fetch-test-data:
