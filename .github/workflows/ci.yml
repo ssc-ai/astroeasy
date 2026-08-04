@@ -1,8 +1,11 @@
 # Lint, test, and build-check on every push and pull request.
 #
-# Tests that require astrometry.net, Docker, downloaded indices, or the
-# test-data bundle skip themselves (see tests/conftest.py), so this runs
-# clean on a bare GitHub runner.
+# Uses uv with the committed uv.lock so CI runs the same tool versions as
+# `make lint` / `make test` locally. Installing tools unpinned lets a new ruff
+# release turn CI red on untouched code.
+#
+# Tests needing astrometry.net, Docker, or index files skip themselves (see
+# tests/conftest.py). Test data is NOT in git -- it is fetched from a release.
 
 name: CI
 
@@ -25,15 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Install ruff
-        run: python -m pip install "ruff>=0.4.0"
+      - name: Install locked dependencies
+        run: uv sync --all-extras --frozen
 
       - name: Lint
-        run: ruff check astroeasy/
+        run: uv run ruff check astroeasy/
         # NOTE: `ruff format --check` is deliberately not run -- 15 files are
         # not currently format-clean. Run `make format` and commit that
         # separately, then add the check here.
@@ -48,35 +51,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
+          enable-cache: true
+          # Sets UV_PYTHON, so `uv sync` and `uv run` agree. Passing --python
+          # to sync alone is not enough: a later bare `uv run` re-resolves to
+          # uv's default interpreter and silently rebuilds the venv without
+          # the extras.
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
-      - name: Install package and dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[catalog,cascade,dev]"
+      - name: Install locked dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Fetch test data
+        # tests/data/*.fits and *.txt are gitignored and live in the
+        # test-data-v1 release. Fixtures error rather than skip without them.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/fetch_test_data.py
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: uv run pytest tests/ -v
 
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
+          enable-cache: true
 
       - name: Build distributions
-        run: |
-          python -m pip install build twine
-          python -m build
+        run: uv build
 
       - name: Check distribution metadata
-        run: twine check dist/*
+        run: uvx twine check dist/*
 
       # Vendored tetra3 Apache-2.0 compliance was audited once and holds
       # structurally -- see astroeasy/_vendor/README.md. Not re-checked per run.

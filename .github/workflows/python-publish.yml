@@ -61,23 +61,34 @@ jobs:
           fi
           echo "PyPI check OK: ${VERSION} is not yet published"
 
-      - name: Install package and dev dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[catalog,cascade,dev]"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # Sets UV_PYTHON so `uv sync` and `uv run` agree on the interpreter.
+          python-version: "3.11"
+
+      - name: Install locked dependencies
+        # --frozen uses the committed uv.lock, so the release runs the same
+        # tool versions as CI and as `make lint` / `make test` locally.
+        run: uv sync --all-extras --frozen
 
       - name: Lint
-        run: ruff check astroeasy/
+        run: uv run ruff check astroeasy/
+
+      - name: Fetch test data
+        # tests/data/*.fits and *.txt are gitignored and live in the
+        # test-data-v1 release. Fixtures error rather than skip without them.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/fetch_test_data.py
 
       - name: Run tests
-        # Tests that need astrometry.net, Docker, indices, or the downloaded
-        # test-data bundle skip themselves (see tests/conftest.py).
-        run: pytest tests/ -v
+        # Tests needing astrometry.net, Docker, or index files skip themselves
+        # (see tests/conftest.py).
+        run: uv run pytest tests/ -v
 
       - name: Build release distributions
-        run: |
-          python -m pip install build
-          python -m build
+        run: uv build
 
       - name: Verify built artifacts carry the expected version
         run: |
@@ -91,9 +102,7 @@ jobs:
       # structurally -- see astroeasy/_vendor/README.md. Not re-checked per run.
 
       - name: Check distribution metadata
-        run: |
-          python -m pip install twine
-          twine check dist/*
+        run: uvx twine check dist/*
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
