@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-08-04
+
+Release and development infrastructure only — no library code changed. Note
+that 1.2.1 was tagged but never published to PyPI, so this release is the first
+to ship the index page-cache fix described below.
+
+### Fixed
+
+- **Broken badge images on the PyPI project page.** The Tests and Coverage
+  badges used repo-relative paths, which GitHub resolves but PyPI cannot: PyPI
+  renders the README standalone, so both 404'd. They now use absolute URLs.
+- **`make install-dev` installed only the `[dev]` extra**, omitting `[cascade]`.
+  Without `scipy`/`pillow` four cascade tests failed rather than skipping, so a
+  fresh checkout looked broken. It now installs `[catalog,cascade,dev]`.
+
+### Added
+
+- **Continuous integration** (`.github/workflows/ci.yml`) — lint, tests on
+  Python 3.11 and 3.12, and a build check on every push and pull request to
+  `main`/`dev`. The repository previously had no CI.
+- **Automated PyPI publishing** (`.github/workflows/python-publish.yml`) via
+  Trusted Publishing (OIDC), so no API token is stored. It triggers only when a
+  GitHub Release is published — never on a merge, and never for draft or
+  prerelease releases — and pauses for manual approval on the `pypi`
+  environment before uploading. Before releasing, it verifies the release tag
+  matches `pyproject.toml`, that the version is not already on PyPI, and that
+  lint, the test suite, and `twine check` all pass. Setup and procedure are
+  documented in `docs/RELEASING.md`.
+- **`ASTROEASY_TEST_INDICES`** to point the test suite at astrometry.net index
+  files outside the default `/stars/data/share/5000/5200-LITE`. `conftest.py`
+  previously claimed this was configurable but hardcoded the path.
+- **Contributor documentation** for index files, the automatic container mount,
+  the Docker/local test split, and the `ASTROEASY_TETRA3_TESTS` opt-in.
+
+### Changed
+
+- Vendored tetra3 redistribution compliance was audited and recorded in
+  `astroeasy/_vendor/README.md`. Apache-2.0 §4(a)–(d) are satisfied and the
+  upstream attribution notices are retained; no packaging change was needed.
+
 ## [1.2.1] - 2026-07-27
 
 ### Fixed
