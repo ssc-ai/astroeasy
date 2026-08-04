@@ -1,0 +1,85 @@
+# Lint, test, and build-check on every push and pull request.
+#
+# Tests that require astrometry.net, Docker, downloaded indices, or the
+# test-data bundle skip themselves (see tests/conftest.py), so this runs
+# clean on a bare GitHub runner.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.4.0"
+
+      - name: Lint
+        run: ruff check astroeasy/
+        # NOTE: `ruff format --check` is deliberately not run -- 15 files are
+        # not currently format-clean. Run `make format` and commit that
+        # separately, then add the check here.
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[catalog,cascade,dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - name: Verify vendored tetra3 Apache-2.0 license ships in the wheel
+        run: |
+          python -m zipfile -l dist/*.whl \
+            | grep -q "astroeasy/_vendor/tetra3/LICENSE.txt" || {
+              echo "::error::astroeasy/_vendor/tetra3/LICENSE.txt is missing from the wheel."; exit 1; }
