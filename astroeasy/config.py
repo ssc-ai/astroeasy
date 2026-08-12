@@ -29,6 +29,16 @@ class AstrometryConfig:
             index in resident memory. Defaults to True. Set False to opt out (e.g. when the
             same sky region is solved repeatedly and re-faulting the tiles costs more than the
             memory). No effect on platforms without posix_fadvise (macOS, Windows).
+        search_radius: Radius in degrees around the boresight hint that solve-field is allowed
+            to search (`--radius`), used only when the metadata carries a boresight. Defaults
+            to 10.0, the value previously hardcoded. Narrowing it to the pointing uncertainty
+            keeps the solver from spending its cpulimit on sky the frame cannot contain, which
+            matters most for frames that will not solve at all and would otherwise burn the
+            whole budget before failing.
+        odds_to_solve: Odds ratio at which solve-field declares a field solved
+            (`--odds-to-solve`). None (the default) omits the flag and keeps solve-field's own
+            default. Raising it rejects marginal solutions that a downstream refinement would
+            otherwise have to detect and discard.
     """
 
     # Required
@@ -45,6 +55,8 @@ class AstrometryConfig:
     docker_image: str | None = None
     output_dir: Path | None = None
     release_index_page_cache: bool = True
+    search_radius: float = 10.0
+    odds_to_solve: float | None = None
 
     def __post_init__(self):
         """Convert string paths to Path objects."""
@@ -103,6 +115,8 @@ class AstrometryConfig:
             docker_image=data.get("docker_image"),
             output_dir=Path(data["output_dir"]) if data.get("output_dir") else None,
             release_index_page_cache=data.get("release_index_page_cache", True),
+            search_radius=data.get("search_radius", 10.0),
+            odds_to_solve=data.get("odds_to_solve"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -123,6 +137,8 @@ class AstrometryConfig:
             "docker_image": self.docker_image,
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "release_index_page_cache": self.release_index_page_cache,
+            "search_radius": self.search_radius,
+            "odds_to_solve": self.odds_to_solve,
         }
 
     def to_yaml(self, path: Path | str) -> None:

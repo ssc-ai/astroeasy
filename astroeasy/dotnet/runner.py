@@ -464,12 +464,14 @@ def solve_field(
                 solve_field_command += (
                     f" --ra {image_metadata.boresight_ra}"
                     f" --dec {image_metadata.boresight_dec}"
-                    " --radius 10.0"
+                    f" --radius {config.search_radius}"
                 )
 
             solve_field_command += " --crpix-center --overwrite --scale-units degw"
             solve_field_command += f" --scale-low {config.min_width_degrees}"
             solve_field_command += f" --scale-high {config.max_width_degrees}"
+            if config.odds_to_solve is not None:
+                solve_field_command += f" --odds-to-solve {config.odds_to_solve}"
             solve_field_command += (
                 f" --continue --cpulimit {config.cpulimit_seconds} --sort-column FLUX"
             )

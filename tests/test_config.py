@@ -158,3 +158,27 @@ class TestAstrometryIndexSeries:
         """Test creating series from string value."""
         series = AstrometryIndexSeries("5200_LITE")
         assert series == AstrometryIndexSeries.SERIES_5200_LITE
+
+
+class TestSearchRadiusAndOdds:
+    """search_radius / odds_to_solve defaults, round-trip, and command construction."""
+
+    def test_defaults_preserve_previous_behaviour(self):
+        config = AstrometryConfig(indices_path=Path("/data/indices"))
+        assert config.search_radius == 10.0
+        assert config.odds_to_solve is None
+
+    def test_round_trip_through_dict(self):
+        config = AstrometryConfig(
+            indices_path=Path("/data/indices"),
+            search_radius=5.0,
+            odds_to_solve=21.0,
+        )
+        restored = AstrometryConfig.from_dict(config.to_dict())
+        assert restored.search_radius == 5.0
+        assert restored.odds_to_solve == 21.0
+
+    def test_from_dict_defaults_when_absent(self):
+        config = AstrometryConfig.from_dict({"indices_path": "/data/indices"})
+        assert config.search_radius == 10.0
+        assert config.odds_to_solve is None
