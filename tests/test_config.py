@@ -182,3 +182,41 @@ class TestSearchRadiusAndOdds:
         config = AstrometryConfig.from_dict({"indices_path": "/data/indices"})
         assert config.search_radius == 10.0
         assert config.odds_to_solve is None
+
+
+class TestAggressiveSolvePreservesConfig:
+    """solve_field_aggressive must vary only max_sources, never drop other settings."""
+
+    def test_every_field_but_max_sources_is_carried_forward(self, monkeypatch):
+        from dataclasses import fields
+
+        from astroeasy import runner
+
+        config = AstrometryConfig(
+            indices_path=Path("/data/indices"),
+            indices_series="5200",
+            tweak_order=1,
+            output_dir=Path("/tmp/out"),
+            release_index_page_cache=False,
+            search_radius=5.0,
+            odds_to_solve=21.0,
+            max_sources=100,
+        )
+
+        seen: list[AstrometryConfig] = []
+
+        def fake_solve(detections, metadata, cfg, existing_wcs=None):
+            seen.append(cfg)
+            return type("R", (), {"success": False})()
+
+        monkeypatch.setattr(runner, "solve_field", fake_solve)
+        runner.solve_field_aggressive([], object(), config, max_sources_sequence=[25, 50])
+
+        assert [c.max_sources for c in seen] == [25, 50]
+        for cfg in seen:
+            for f in fields(AstrometryConfig):
+                if f.name == "max_sources":
+                    continue
+                assert getattr(cfg, f.name) == getattr(config, f.name), (
+                    f"{f.name} was not carried forward"
+                )

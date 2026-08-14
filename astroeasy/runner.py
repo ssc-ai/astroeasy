@@ -1,6 +1,7 @@
 """High-level solve_field API for astrometry.net plate solving."""
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from astroeasy.config import AstrometryConfig
@@ -166,16 +167,9 @@ def solve_field_aggressive(
     for max_sources in max_sources_sequence:
         logger.info(f"Aggressive solve: trying max_sources={max_sources}")
 
-        # Create a modified config with the current max_sources
-        modified_config = AstrometryConfig(
-            indices_path=config.indices_path,
-            docker_image=config.docker_image,
-            min_width_degrees=config.min_width_degrees,
-            max_width_degrees=config.max_width_degrees,
-            cpulimit_seconds=config.cpulimit_seconds,
-            min_sources_for_attempt=config.min_sources_for_attempt,
-            max_sources=max_sources,
-        )
+        # Vary only max_sources: `replace` copies every other field, so a setting the
+        # caller configured cannot be silently reverted to its default on this path.
+        modified_config = replace(config, max_sources=max_sources)
 
         result = solve_field(detections, metadata, modified_config, existing_wcs)
         attempts.append((max_sources, result.success))
