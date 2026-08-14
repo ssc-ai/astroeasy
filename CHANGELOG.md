@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-08-14
+
+### Added
+
+- **Configurable plate-solve search radius** — `AstrometryConfig.search_radius`
+  (degrees, default `10.0`). When the image metadata carries a boresight,
+  `solve_field` passes `--ra`/`--dec` with a radius that was previously
+  hard-coded at 10 degrees. That is generous for a sensor whose pointing is
+  known to better than a degree: the solver spends its `cpulimit` searching sky
+  the frame cannot contain, and a frame that will not solve burns the whole
+  budget before failing. The default preserves the previous behaviour exactly.
+- **Configurable solve acceptance threshold** — `AstrometryConfig.odds_to_solve`
+  (default `None`). When set, `--odds-to-solve` is passed to `solve-field`;
+  `None` omits the flag and keeps solve-field's own default. Raising it rejects
+  marginal solutions that a downstream refinement would otherwise have to detect
+  and discard.
+
+### Fixed
+
+- **`solve_field_aggressive` silently dropped six configuration fields.** It
+  varies `max_sources` across attempts and rebuilt `AstrometryConfig` by hand to
+  do so, copying 7 of the dataclass's 13 fields; `indices_series`,
+  `tweak_order`, `output_dir`, `release_index_page_cache`, `search_radius` and
+  `odds_to_solve` were reset to their defaults on every attempt. Two of those
+  change solving outright — a caller selecting the `5200` index series got
+  `5200_LITE`, and one setting `tweak_order=1` got `2` — so the aggressive path
+  could fail, or succeed differently, where a direct `solve_field` call with the
+  same config would not, and nothing surfaced the substitution. It now uses
+  `dataclasses.replace`, which varies the one field by construction and cannot
+  go stale as fields are added. **Behaviour change:** callers of
+  `solve_field_aggressive` that set any of those six now get their configured
+  value, so results on that path may move.
+
 ## [1.2.2] - 2026-08-04
 
 Release and development infrastructure only — no library code changed. Note

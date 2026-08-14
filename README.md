@@ -250,6 +250,8 @@ max_width_degrees: 10.0
 tweak_order: 2
 max_sources: 100
 min_sources_for_attempt: 4
+search_radius: 10.0      # degrees around the boresight hint that solve-field may search
+odds_to_solve: null      # null keeps solve-field's own acceptance threshold
 ```
 
 ### Python Configuration
@@ -263,6 +265,8 @@ config = AstrometryConfig(
     cpulimit_seconds=60,
     min_width_degrees=0.5,
     max_width_degrees=5.0,
+    search_radius=5.0,      # narrow the boresight search to the pointing uncertainty
+    odds_to_solve=21.0,     # reject marginal solutions rather than refining them later
 )
 
 # Load from YAML
