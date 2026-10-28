@@ -72,7 +72,9 @@ autoindex
 minwidth {config.min_width_degrees}
 maxwidth {config.max_width_degrees}
 """
-    with open(output_path, "w") as f:
+    # LF only: solve-field runs on Linux (Docker on Windows hosts) and reads a trailing "\r" as
+    # part of the path ("failed to open index directory: /usr/local/astrometry/data\r").
+    with open(output_path, "w", newline="\n") as f:
         f.write(cfg_content)
 
 
