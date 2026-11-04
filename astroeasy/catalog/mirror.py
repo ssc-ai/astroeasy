@@ -69,7 +69,13 @@ def read_tile(mirror_dir: str, filename: str) -> np.ndarray:
 
 
 def _ra_subranges(min_ra: float, max_ra: float) -> list[tuple[float, float]]:
-    """Normalize the RA box to [0,360), splitting across the 0/360 seam if needed."""
+    """Normalize the RA box to [0,360), splitting across the 0/360 seam if needed.
+
+    A box 360 deg wide or wider is the whole ring: wrapping its ends separately would
+    return the wrong slice (a padded box near a pole is easily wider than 360 deg).
+    """
+    if max_ra - min_ra >= 360.0:
+        return [(0.0, 360.0)]
     lo, hi = np.mod(min_ra, 360.0), np.mod(max_ra, 360.0)
     if lo <= hi:
         return [(lo, hi)]

@@ -33,11 +33,15 @@ class Cone:
 
     def covers(self, ra0: float, dec0: float, radius_deg: float, faint_limit: float) -> bool:
         """True if this cone already contains the requested cone."""
-        dd = abs(self.dec0 - dec0)
-        cosd = max(0.02, math.cos(math.radians((self.dec0 + dec0) / 2.0)))
-        dr = abs(((self.ra0 - ra0 + 180.0) % 360.0) - 180.0) * cosd
-        sep = math.hypot(dd, dr)
+        sep = float(_separation_deg(self.ra0, self.dec0, ra0, dec0))
         return sep + radius_deg <= self.radius_deg and faint_limit <= self.faint_limit
+
+
+def _separation_deg(ra1, dec1, ra2, dec2):
+    """Great-circle separation in degrees (haversine; arrays or scalars)."""
+    r1, d1, r2, d2 = (np.radians(np.asarray(v, dtype=float)) for v in (ra1, dec1, ra2, dec2))
+    h = np.sin((d2 - d1) / 2.0) ** 2 + np.cos(d1) * np.cos(d2) * np.sin((r2 - r1) / 2.0) ** 2
+    return np.degrees(2.0 * np.arcsin(np.sqrt(np.clip(h, 0.0, 1.0))))
 
 
 def query_cone(
@@ -51,13 +55,18 @@ def query_cone(
 ) -> Cone:
     """Deep cone from the mirror, brightest-first.
 
-    Queries the bounding box (RA-padded by 1/cos dec; full RA ring near the
-    poles), then cuts to the true angular radius.
+    Queries the bounding box (RA-padded by 1/cos dec; the full RA ring near the
+    poles, or whenever the padding reaches 180 deg), then cuts to the true angular
+    radius.
     """
-    if abs(dec0) + radius_deg >= 88.0:
+    pad = (
+        math.inf
+        if abs(dec0) + radius_deg >= 88.0
+        else radius_deg / max(0.02, math.cos(math.radians(abs(dec0) + radius_deg)))
+    )
+    if pad >= 180.0:
         min_ra, max_ra = 0.0, 360.0
     else:
-        pad = radius_deg / max(0.02, math.cos(math.radians(abs(dec0) + radius_deg)))
         min_ra, max_ra = ra0 - pad, ra0 + pad
     rows = query_mirror_box(
         min_ra, max_ra,
@@ -66,10 +75,7 @@ def query_cone(
     )
 
     # Cut the box to the cone and sort brightest-first.
-    cosd = np.cos(np.radians(dec0))
-    dra = (rows["ra"] - ra0 + 180.0) % 360.0 - 180.0
-    sep2 = (dra * cosd) ** 2 + (rows["dec"] - dec0) ** 2
-    rows = rows[sep2 <= radius_deg**2]
+    rows = rows[_separation_deg(ra0, dec0, rows["ra"], rows["dec"]) <= radius_deg]
     rows = rows[np.argsort(rows["g"])]
 
     return Cone(
