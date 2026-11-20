@@ -8,7 +8,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from astroeasy import AstrometryConfig, Detection, ImageMetadata
+# The suite tests astroeasy, not this host's astrometry.net build: run against whatever solve-field is
+# installed, as the suite always has. tests/test_solver_version.py clears this to test the pin itself;
+# set ASTROEASY_ALLOW_UNPINNED_SOLVER=0 to run the whole suite strictly against the pinned release.
+os.environ.setdefault("ASTROEASY_ALLOW_UNPINNED_SOLVER", "1")
+
+from astroeasy import AstrometryConfig, Detection, ImageMetadata  # noqa: E402
 from astroeasy.constants import AstrometryIndexSeries
 from astroeasy.runner import test_install
 

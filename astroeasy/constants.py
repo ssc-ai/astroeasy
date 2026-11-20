@@ -13,6 +13,12 @@ class AstrometryIndexSeries(str, Enum):
         return self.value
 
 
+# The astrometry.net release astroeasy is built and tested against. Different solve-field builds can
+# return different solutions for identical input, so the solver is part of what an astroeasy version
+# pins: a solver reporting any other revision is refused (astroeasy/dotnet/solver_version.py). Change
+# it deliberately, together with the Docker image's astrometry.net ref, and say so in the changelog.
+ASTROMETRY_NET_VERSION = "0.99"
+
 ASTROMETRY_INDICES_URL_5200 = "https://portal.nersc.gov/project/cosmo/temp/dstn/index-5200/"
 ASTROMETRY_INDICES_URL_5200_LITE = (
     "https://portal.nersc.gov/project/cosmo/temp/dstn/index-5200/LITE/"

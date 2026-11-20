@@ -12,6 +12,7 @@ from astropy.io import fits
 from astroeasy.config import AstrometryConfig
 from astroeasy.dotnet.docker import run_against_container
 from astroeasy.dotnet.local import run_against_local
+from astroeasy.dotnet.solver_version import ensure_pinned_solver
 from astroeasy.models import (
     Detection,
     ImageMetadata,
@@ -375,7 +376,8 @@ def solve_field_image(
             "image.wcs", image_name, tweak_command, width_height_args, config.cpulimit_seconds
         )
 
-        # Run solver
+        # Run solver (only on the pinned astrometry.net release)
+        ensure_pinned_solver(config.docker_image)
         if config.docker_image:
             success = runner(
                 solve_field_command,
@@ -509,7 +511,8 @@ def solve_field(
             "sources.wcs", "sources.fits", tweak_command, width_height_args, config.cpulimit_seconds
         )
 
-        # Run solver
+        # Run solver (only on the pinned astrometry.net release)
+        ensure_pinned_solver(config.docker_image)
         if config.docker_image:
             success = runner(
                 solve_field_command,

@@ -1,9 +1,10 @@
 """Docker-based execution of astrometry.net solve-field."""
 
 import logging
-import re
 import subprocess
 from pathlib import Path
+
+from astroeasy.dotnet import solver_version
 
 logger = logging.getLogger(__name__)
 
@@ -122,43 +123,17 @@ def run_against_container(
 
 
 def test_dotnet_install(image: str = "astrometry-cli") -> bool:
-    """Test if solve-field works inside a Docker container.
+    """Test that the image runs solve-field, and that it is the astrometry.net release astroeasy is
+    pinned to.
 
     Args:
         image: Docker image name to test.
 
     Returns:
-        True if solve-field is available and working, False otherwise.
+        True if it is (or another release is accepted via ASTROEASY_ALLOW_UNPINNED_SOLVER).
     """
-    try:
-        # Run solve-field --help in a new container
-        result = subprocess.run(
-            ["docker", "run", "--rm", image, "solve-field", "--help"],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            logger.error("Failed to run solve-field in container")
-            return False
-
-        # Get version information from the help output
-        revision_match = re.search(r"Revision\s+([\d.]+)", result.stdout)
-
-        if revision_match:
-            version = revision_match.group(1)
-            logger.info(f"solve-field (Astrometry.net) version: {version}")
-            return True
-        else:
-            logger.warning(
-                "solve-field (Astrometry.net) is installed but version could not be determined"
-            )
-            return True
-
-    except subprocess.SubprocessError as e:
-        logger.error(f"Failed to run docker container: {e}")
+    revision = solver_version.read_solver_revision(image)
+    if revision is None:
+        logger.error(f"Could not run solve-field in Docker image {image!r}, or read its revision")
         return False
-
-
-if __name__ == "__main__":
-    test_dotnet_install()
+    return solver_version.solver_is_acceptable(revision)

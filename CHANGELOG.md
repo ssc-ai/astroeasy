@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Same inputs now give the same solution on every host. Through 1.2.x they did not, and on MDP survey
+fields the image centre moved by up to 0.9″ (about a pixel) between two otherwise identical runs.
+
+### Fixed
+
+- **The verify step read solve-field's default config, not astroeasy's.** Every solve runs solve-field
+  twice: the solve, then `solve-field --verify <wcs>` to verify the solution and re-tweak its SIP terms.
+  Only the solve was given the generated `astrometry.cfg`. The verify step fell back to the solver's
+  default config. Where that file listed the index files, the verify step re-tweaked the WCS. Anywhere
+  else (a stock install, a source build, a container whose indices are mounted elsewhere) it failed with
+  "You must list at least one index". The verify step now reads the generated config, and gets the same
+  `--cpulimit` as the solve.
+- **A failed verify step was ignored.** Neither runner checked its exit status, so the first-pass WCS
+  was returned as if verified. A solve whose verify step fails now fails, and solve-field's output is
+  logged.
+
+### Added
+
+- **Pinned astrometry.net release** (`ASTROMETRY_NET_VERSION = "0.99"`). Python dependency pins cannot
+  express a C program on the PATH, so astroeasy enforces it at run time. `test_install()` /
+  `astroeasy test-install` fail on another release, and so does every solve, with the new
+  `SolverVersionError`. The solver is asked once per process; a missing solver is still left to the
+  solve to report. `ASTROEASY_ALLOW_UNPINNED_SOLVER=1` opts out, with a warning, for evaluating other
+  releases. `read_solver_revision()` reports which release a host has, for run provenance.
+
+### Changed
+
+- **Upgrade note.** A host whose default config listed the indices already got the verify step's
+  re-tweak and sees no change. A host whose verify step was failing now gets the re-tweaked solutions,
+  which differ by up to about a pixel. Hosts with any astrometry.net other than 0.99 must install 0.99
+  (see the README) or opt out.
+
 ## [1.2.3] - 2026-08-14
 
 ### Added
@@ -36,6 +70,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   go stale as fields are added. **Behaviour change:** callers of
   `solve_field_aggressive` that set any of those six now get their configured
   value, so results on that path may move.
+
 
 ## [1.2.2] - 2026-08-04
 
