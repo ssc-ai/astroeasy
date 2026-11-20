@@ -16,8 +16,12 @@ RUN apt-get install -y --no-install-recommends python3 python3-pip \
 
 RUN apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6
 
-# install Astrometry.net
-RUN git clone https://github.com/dstndstn/astrometry.net.git /install-astrometry
+# install Astrometry.net, pinned to a release tag so two builds give the same solver.
+# Upgrade deliberately: bump the default (or `docker build --build-arg ASTROMETRY_NET_REF=...`),
+# rebuild, run `make test-install-docker`, and tag the image with the version.
+ARG ASTROMETRY_NET_REF=0.99
+RUN git clone --branch ${ASTROMETRY_NET_REF} --depth 1 \
+        https://github.com/dstndstn/astrometry.net.git /install-astrometry
 
 WORKDIR /install-astrometry
 
