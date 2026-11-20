@@ -76,6 +76,36 @@ maxwidth {config.max_width_degrees}
         f.write(cfg_content)
 
 
+def _verify_command(
+    wcs_name: str,
+    input_name: str,
+    tweak_command: str,
+    width_height_args: str,
+    cpulimit_seconds: int,
+) -> str:
+    """Build the verify/re-tweak step that follows a solve.
+
+    It reads the same generated ``astrometry.cfg`` as the solve, and gets the same CPU limit. Without
+    ``--config``, solve-field falls back to its DEFAULT config file. That file lists the index files on
+    some hosts and none on others, so the verify step re-tweaked the WCS on the first kind of host and
+    failed on the second. Identical inputs then gave different solutions, decided by the host.
+
+    Args:
+        wcs_name: WCS file to verify (the solve's output, or an existing WCS).
+        input_name: The field: an image or an xylist.
+        tweak_command: ``--tweak-order N`` or ``--no-tweak``, as for the solve.
+        width_height_args: ``--width W --height H``, as for the solve.
+        cpulimit_seconds: CPU limit for the step.
+
+    Returns:
+        The command line.
+    """
+    return (
+        f"solve-field --config astrometry.cfg --verify {wcs_name} {input_name}{tweak_command} "
+        f"--tag-all --continue --no-plots --cpulimit {cpulimit_seconds}" + width_height_args
+    )
+
+
 def _write_sources_fits(
     detections: list[Detection],
     output_path: Path,
@@ -341,11 +371,8 @@ def solve_field_image(
             solve_field_command += " --no-plots --downsample 2"
             solve_field_command += tweak_command
 
-        # Build verification command
-        verify_command = (
-            f"solve-field --verify image.wcs {image_name}{tweak_command} "
-            f"--tag-all --continue --no-plots"
-            + width_height_args
+        verify_command = _verify_command(
+            "image.wcs", image_name, tweak_command, width_height_args, config.cpulimit_seconds
         )
 
         # Run solver
@@ -478,10 +505,8 @@ def solve_field(
             solve_field_command += " --no-plots"
             solve_field_command += tweak_command
 
-        # Build verification command
-        verify_command = (
-            f"solve-field --verify sources.wcs sources.fits{tweak_command} --tag-all --continue --no-plots"
-            + width_height_args
+        verify_command = _verify_command(
+            "sources.wcs", "sources.fits", tweak_command, width_height_args, config.cpulimit_seconds
         )
 
         # Run solver

@@ -72,6 +72,16 @@ def run_against_local(
             cwd=run_directory,
             env=_SOLVE_ENV,
         )
+        if result.returncode != 0:
+            # Keeping the first-pass WCS here would make the answer depend on whether this host's
+            # verify step can run, so a solve whose verify failed is not a solve.
+            logger.error(
+                f"[run_against_local] verification step failed (solve-field returned "
+                f"{result.returncode}); discarding this solution"
+            )
+            for line in f"{result.stdout}\n{result.stderr}".strip().split("\n")[-10:]:
+                logger.error(f"[solve-field verify] {line}")
+            return False
         logger.info("[run_against_local] verification step complete")
 
     return successful_fit

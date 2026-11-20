@@ -108,6 +108,16 @@ def run_against_container(
                 f.write(f"Verification STDERR:\n{r2.stderr}\n")
                 f.write("-" * 80 + "\n")
 
+        if r2.returncode != 0:
+            # Same rule as run_against_local: a solve whose verify step failed is not a solve.
+            logger.error(
+                f"[run_against_container] verification step failed (solve-field returned "
+                f"{r2.returncode}); discarding this solution"
+            )
+            for line in f"{r2.stdout}\n{r2.stderr}".strip().split("\n")[-10:]:
+                logger.error(f"[solve-field verify] {line}")
+            return False
+
     return successful_fit
 
 
