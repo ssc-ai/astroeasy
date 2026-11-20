@@ -144,3 +144,15 @@ class TestSolveRefusesTheWrongSolver:
         detections = [Detection(x=float(i), y=float(2 * i), flux=1.0) for i in range(30)]
         with pytest.raises(SolverVersionError):
             solve_field(detections, ImageMetadata(width=64, height=64), AstrometryConfig(indices_path=tmp_path))
+
+
+def test_the_docker_image_builds_the_pinned_release():
+    """The Docker image and the local check must agree on the solver, or the image fails its own check."""
+    import re
+    from pathlib import Path
+
+    import astroeasy.dotnet
+
+    dockerfile = (Path(astroeasy.dotnet.__file__).parent / "Dockerfile").read_text()
+    (ref,) = re.findall(r"^ARG ASTROMETRY_NET_REF=(\S+)$", dockerfile, flags=re.MULTILINE)
+    assert ref == ASTROMETRY_NET_VERSION
