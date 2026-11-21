@@ -372,8 +372,12 @@ def solve_field_image(
             solve_field_command += " --no-plots --downsample 2"
             solve_field_command += tweak_command
 
-        verify_command = _verify_command(
-            "image.wcs", image_name, tweak_command, width_height_args, config.cpulimit_seconds
+        # Skipped when the caller turned it off -- except when verifying an existing WCS, where
+        # the verify step is the whole operation.
+        verify_command = (
+            _verify_command("image.wcs", image_name, tweak_command, width_height_args, config.cpulimit_seconds)
+            if config.verify_solution or existing_wcs is not None
+            else None
         )
 
         # Run solver (only on the pinned astrometry.net release)
@@ -507,8 +511,12 @@ def solve_field(
             solve_field_command += " --no-plots"
             solve_field_command += tweak_command
 
-        verify_command = _verify_command(
-            "sources.wcs", "sources.fits", tweak_command, width_height_args, config.cpulimit_seconds
+        # Skipped when the caller turned it off -- except when verifying an existing WCS, where
+        # the verify step is the whole operation.
+        verify_command = (
+            _verify_command("sources.wcs", "sources.fits", tweak_command, width_height_args, config.cpulimit_seconds)
+            if config.verify_solution or existing_wcs is not None
+            else None
         )
 
         # Run solver (only on the pinned astrometry.net release)

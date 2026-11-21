@@ -220,3 +220,17 @@ class TestAggressiveSolvePreservesConfig:
                 assert getattr(cfg, f.name) == getattr(config, f.name), (
                     f"{f.name} was not carried forward"
                 )
+
+
+class TestVerifySolution:
+    """verify_solution: default on, round-trips through dict/YAML, absent means on."""
+
+    def test_default_is_on(self):
+        assert AstrometryConfig(indices_path=Path("/data/indices")).verify_solution is True
+
+    def test_round_trip_through_dict(self):
+        config = AstrometryConfig(indices_path=Path("/data/indices"), verify_solution=False)
+        assert AstrometryConfig.from_dict(config.to_dict()).verify_solution is False
+
+    def test_from_dict_default_when_absent(self):
+        assert AstrometryConfig.from_dict({"indices_path": "/data/indices"}).verify_solution is True

@@ -39,6 +39,13 @@ class AstrometryConfig:
             (`--odds-to-solve`). None (the default) omits the flag and keeps solve-field's own
             default. Raising it rejects marginal solutions that a downstream refinement would
             otherwise have to detect and discard.
+        verify_solution: Run solve-field's verify/re-tweak step after a solve (`--verify`
+            against the solution, with the same generated config and CPU limit). Defaults to True.
+            The step re-checks the solution against every index that covers the field and
+            re-fits it. That usually tightens the fit, but it also changes the reference-star
+            list a caller gets back, so a pipeline tuned on unverified solutions can want it off.
+            Set False to return the solve's own solution and star list. Verifying an existing WCS
+            (``existing_wcs``) always runs, since there the verify step is the whole operation.
     """
 
     # Required
@@ -57,6 +64,7 @@ class AstrometryConfig:
     release_index_page_cache: bool = True
     search_radius: float = 10.0
     odds_to_solve: float | None = None
+    verify_solution: bool = True
 
     def __post_init__(self):
         """Convert string paths to Path objects."""
@@ -117,6 +125,7 @@ class AstrometryConfig:
             release_index_page_cache=data.get("release_index_page_cache", True),
             search_radius=data.get("search_radius", 10.0),
             odds_to_solve=data.get("odds_to_solve"),
+            verify_solution=data.get("verify_solution", True),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -139,6 +148,7 @@ class AstrometryConfig:
             "release_index_page_cache": self.release_index_page_cache,
             "search_radius": self.search_radius,
             "odds_to_solve": self.odds_to_solve,
+            "verify_solution": self.verify_solution,
         }
 
     def to_yaml(self, path: Path | str) -> None:

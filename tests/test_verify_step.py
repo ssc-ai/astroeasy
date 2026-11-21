@@ -188,3 +188,36 @@ class TestContainerVerifyFailureIsNotSilent:
             "solve-field sources.fits", tmp_path, tmp_path, "img", "solve-field --verify sources.wcs"
         )
         assert ok is True
+
+
+class TestVerifyCanBeTurnedOff:
+    """`verify_solution=False` skips the verify/re-tweak step, so a caller can choose either behaviour
+    from configuration alone, the same on every host. The default runs it, as astroeasy always meant to."""
+
+    def test_default_runs_the_verify_step(self, recorded_commands, detections, metadata, tmp_path):
+        solve_field(detections, metadata, config_for(tmp_path))
+
+        (call,) = recorded_commands
+        assert call["verify"] is not None
+
+    def test_star_list_solve_without_verify(self, recorded_commands, detections, metadata, tmp_path):
+        config = AstrometryConfig(indices_path=tmp_path, docker_image=None, verify_solution=False)
+        solve_field(detections, metadata, config)
+
+        (call,) = recorded_commands
+        assert call["solve"] is not None
+        assert call["verify"] is None
+
+    def test_image_solve_without_verify(self, recorded_commands, image_file, tmp_path):
+        config = AstrometryConfig(indices_path=tmp_path, docker_image=None, verify_solution=False)
+        solve_field_image(image_file, config)
+
+        (call,) = recorded_commands
+        assert call["verify"] is None
+
+    def test_docker_solve_without_verify(self, recorded_commands, detections, metadata, tmp_path):
+        config = AstrometryConfig(indices_path=tmp_path, docker_image="astrometry-cli", verify_solution=False)
+        solve_field(detections, metadata, config)
+
+        (call,) = recorded_commands
+        assert call["verify"] is None
