@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
+1.2.3 was prepared but never published. Its changes (configurable search radius and odds-to-solve,
+and the `solve_field_aggressive` config fix, listed under [1.2.3] below) first ship in this release.
+
 Same inputs now give the same solution on every host. Through 1.2.x they did not, and on MDP survey
 fields the image centre moved by up to 0.9″ (about a pixel) between two otherwise identical runs.
 
@@ -30,15 +35,25 @@ fields the image centre moved by up to 0.9″ (about a pixel) between two otherw
   `SolverVersionError`. The solver is asked once per process; a missing solver is still left to the
   solve to report. `ASTROEASY_ALLOW_UNPINNED_SOLVER=1` opts out, with a warning, for evaluating other
   releases. `read_solver_revision()` reports which release a host has, for run provenance.
+- **`verify_solution`** (default `True`). Set `False` to skip the verify/re-tweak step and return the
+  solve's own solution and reference-star list. The verify step replaces that list with the deepest
+  index's stars, so a pipeline tuned on unverified solutions can measure differently with it on;
+  this makes the choice configuration rather than an accident of the host. Verifying an existing
+  WCS always runs.
 
 ### Changed
 
+- **The Docker image builds astrometry.net 0.99** (`ARG ASTROMETRY_NET_REF=0.99`) instead of whatever
+  the upstream default branch was at build time. A test holds the image's ref and
+  `ASTROMETRY_NET_VERSION` equal. The pinned release changes only in a minor release, so
+  `astroeasy~=1.3.0` fixes a dependant's solver.
 - **Upgrade note.** A host whose default config listed the indices already got the verify step's
   re-tweak and sees no change. A host whose verify step was failing now gets the re-tweaked solutions,
   which differ by up to about a pixel. Hosts with any astrometry.net other than 0.99 must install 0.99
-  (see the README) or opt out.
+  (see the README) or opt out. To keep the previous behaviour of hosts whose verify step was
+  failing, set `verify_solution: false`.
 
-## [1.2.3] - 2026-08-14
+## [1.2.3] - 2026-08-14 (never published; ships in 1.3.0)
 
 ### Added
 
