@@ -42,10 +42,10 @@ class AstrometryConfig:
         verify_solution: Run solve-field's verify/re-tweak step after a solve (`--verify`
             against the solution, with the same generated config and CPU limit). Defaults to True.
             The step re-checks the solution against every index that covers the field and
-            re-fits it. That usually tightens the fit, but it also changes the reference-star
-            list a caller gets back, so a pipeline tuned on unverified solutions can want it off.
-            Set False to return the solve's own solution and star list. Verifying an existing WCS
-            (``existing_wcs``) always runs, since there the verify step is the whole operation.
+            re-fits it, which usually tightens the fit. The reference-star list returned is the
+            solve's either way. Set False to return the solve's own, unverified solution.
+            Verifying an existing WCS (``existing_wcs``) always runs, since there the verify step
+            is the whole operation.
     """
 
     # Required

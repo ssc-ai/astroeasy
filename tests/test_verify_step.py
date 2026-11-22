@@ -23,10 +23,10 @@ from astroeasy.dotnet.local import run_against_local
 
 @pytest.fixture
 def recorded_commands(monkeypatch):
-    """Replace both solve-field runners with recorders; they report "no solution"."""
+    """Record the solve and verify commands a solve would run; report "no solution"."""
     calls: list[dict] = []
 
-    def record(solve_command, run_directory, verify_command):
+    def record(run, solve_command, verify_command, run_directory, base_name):
         calls.append(
             {
                 "solve": solve_command,
@@ -36,18 +36,7 @@ def recorded_commands(monkeypatch):
         )
         return False
 
-    monkeypatch.setattr(
-        dotnet_runner,
-        "run_against_local",
-        lambda solve, run_dir, verify=None: record(solve, run_dir, verify),
-    )
-    monkeypatch.setattr(
-        dotnet_runner,
-        "run_against_container",
-        lambda solve, run_dir, indices, image, verify=None, output_dir=None: record(
-            solve, run_dir, verify
-        ),
-    )
+    monkeypatch.setattr(dotnet_runner, "_solve_then_verify", record)
     # The solver-version pin is tested on its own; keep it out of the way here.
     monkeypatch.setattr(dotnet_runner, "ensure_pinned_solver", lambda docker_image: None, raising=False)
     return calls
@@ -221,3 +210,61 @@ class TestVerifyCanBeTurnedOff:
 
         (call,) = recorded_commands
         assert call["verify"] is None
+
+
+class TestVerifyKeepsTheSolvesStarList:
+    """The verify step improves the WCS; it must not also swap the reference-star list.
+
+    solve-field's verify step re-checks the solution against every index covering the field and
+    rewrites `<base>.rdls` with the stars of whichever index it settles on, usually the deepest: hundreds
+    of mostly faint stars instead of the solving index's few dozen. That list is what a solve returns as
+    its reference stars, and swapping it moved what a downstream pipeline measured (MDP: fewer correlated
+    observations) even though the verified WCS itself fits the catalog better. The fix runs the two
+    steps separately and keeps the solve's list.
+    """
+
+    @pytest.fixture
+    def steps(self, tmp_path):
+        """A fake runner: the solve writes the solve's star list, the verify step overwrites it."""
+        log = []
+
+        def make(solve_ok=True, verify_ok=True):
+            def run(solve_command, verify_command):
+                log.append((solve_command, verify_command))
+                if solve_command:
+                    (tmp_path / "sources.rdls").write_bytes(b"solve stars")
+                    return solve_ok
+                (tmp_path / "sources.rdls").write_bytes(b"deep-index stars")
+                return verify_ok
+
+            return run
+
+        return make, log
+
+    def test_the_solves_star_list_survives_the_verify_step(self, steps, tmp_path):
+        make, log = steps
+        ok = dotnet_runner._solve_then_verify(make(), "solve", "verify", tmp_path, "sources")
+        assert ok is True
+        assert log == [("solve", None), (None, "verify")]
+        assert (tmp_path / "sources.rdls").read_bytes() == b"solve stars"
+
+    def test_a_failed_solve_is_not_verified(self, steps, tmp_path):
+        make, log = steps
+        assert dotnet_runner._solve_then_verify(make(solve_ok=False), "solve", "verify", tmp_path, "sources") is False
+        assert log == [("solve", None)]
+
+    def test_a_failed_verify_fails_the_solve(self, steps, tmp_path):
+        make, _ = steps
+        assert dotnet_runner._solve_then_verify(make(verify_ok=False), "solve", "verify", tmp_path, "sources") is False
+
+    def test_without_a_verify_step_the_solve_runs_alone(self, steps, tmp_path):
+        make, log = steps
+        assert dotnet_runner._solve_then_verify(make(), "solve", None, tmp_path, "sources") is True
+        assert log == [("solve", None)]
+
+    def test_verifying_an_existing_wcs_keeps_its_own_star_list(self, steps, tmp_path):
+        """With no solve there is no solve's list to keep: the verify step's list is the answer."""
+        make, log = steps
+        assert dotnet_runner._solve_then_verify(make(), None, "verify", tmp_path, "sources") is True
+        assert log == [(None, "verify")]
+        assert (tmp_path / "sources.rdls").read_bytes() == b"deep-index stars"

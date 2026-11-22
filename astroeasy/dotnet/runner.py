@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -105,6 +106,44 @@ def _verify_command(
         f"solve-field --config astrometry.cfg --verify {wcs_name} {input_name}{tweak_command} "
         f"--tag-all --continue --no-plots --cpulimit {cpulimit_seconds}" + width_height_args
     )
+
+
+def _solve_then_verify(
+    run: Callable[[str | None, str | None], bool],
+    solve_command: str | None,
+    verify_command: str | None,
+    run_directory: Path,
+    base_name: str,
+) -> bool:
+    """Run the solve, then the verify step separately, keeping the solve's reference-star list.
+
+    solve-field's verify step re-checks a solution against every index covering the field and rewrites
+    ``<base_name>.rdls`` with the stars of whichever index it settles on, usually the deepest: hundreds of
+    mostly faint stars instead of the solving index's few dozen. That file is what a solve returns as its
+    reference stars (``SolveResult.matched_stars``). Letting the verify step swap it changed what a
+    downstream pipeline measured against, even though the verified WCS itself fits the catalog better, so
+    the solve's list is put back after the verify step.
+
+    Args:
+        run: Runs solve-field: ``run(solve_command, verify_command)`` -> whether there is a solution.
+        solve_command: The solve, or None when only verifying an existing WCS.
+        verify_command: The verify step, or None when it is turned off.
+        run_directory: Where solve-field writes its output.
+        base_name: Base filename of the outputs (``"sources"`` or ``"image"``).
+
+    Returns:
+        Whether there is a solution: the solve succeeded and, if it ran, so did the verify step.
+    """
+    if solve_command is None or verify_command is None:
+        return run(solve_command, verify_command)
+    if not run(solve_command, None):
+        return False
+    rdls = run_directory / f"{base_name}.rdls"
+    solve_stars = rdls.read_bytes() if rdls.exists() else None
+    verified = run(None, verify_command)
+    if solve_stars is not None:
+        rdls.write_bytes(solve_stars)
+    return verified
 
 
 def _write_sources_fits(
@@ -383,16 +422,18 @@ def solve_field_image(
         # Run solver (only on the pinned astrometry.net release)
         ensure_pinned_solver(config.docker_image)
         if config.docker_image:
-            success = runner(
-                solve_field_command,
-                temp_path,
-                config.indices_path,
-                config.docker_image,
-                verify_command,
-                config.output_dir,
-            )
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(
+                    solve, temp_path, config.indices_path, config.docker_image, verify, config.output_dir
+                )
+
         else:
-            success = runner(solve_field_command, temp_path, verify_command)
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(solve, temp_path, verify)
+
+        success = _solve_then_verify(run, solve_field_command, verify_command, temp_path, "image")
 
         if success:
             wcs_result = _read_wcs_result(temp_path / "image.wcs")
@@ -522,16 +563,18 @@ def solve_field(
         # Run solver (only on the pinned astrometry.net release)
         ensure_pinned_solver(config.docker_image)
         if config.docker_image:
-            success = runner(
-                solve_field_command,
-                temp_path,
-                config.indices_path,
-                config.docker_image,
-                verify_command,
-                config.output_dir,
-            )
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(
+                    solve, temp_path, config.indices_path, config.docker_image, verify, config.output_dir
+                )
+
         else:
-            success = runner(solve_field_command, temp_path, verify_command)
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(solve, temp_path, verify)
+
+        success = _solve_then_verify(run, solve_field_command, verify_command, temp_path, "sources")
 
         if success:
             wcs_result = _read_wcs_result(temp_path / "sources.wcs")

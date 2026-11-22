@@ -26,6 +26,12 @@ fields the image centre moved by up to 0.9″ (about a pixel) between two otherw
 - **A failed verify step was ignored.** Neither runner checked its exit status, so the first-pass WCS
   was returned as if verified. A solve whose verify step fails now fails, and solve-field's output is
   logged.
+- **The verify step replaced the solution's reference-star list.** It rewrites `<base>.rdls` with the
+  stars of whichever index it settles on, usually the deepest: hundreds of mostly faint stars instead of
+  the solving index's few dozen. That file is what a solve returns as `matched_stars`, so a working
+  verify step changed what a caller measured against, not only the WCS. The solve and the verify step now
+  run separately, and the solve's list is kept. On MDP, a pipeline consuming the list recovered the
+  correlated observations it had lost with the verify step on.
 
 ### Added
 
@@ -36,10 +42,8 @@ fields the image centre moved by up to 0.9″ (about a pixel) between two otherw
   solve to report. `ASTROEASY_ALLOW_UNPINNED_SOLVER=1` opts out, with a warning, for evaluating other
   releases. `read_solver_revision()` reports which release a host has, for run provenance.
 - **`verify_solution`** (default `True`). Set `False` to skip the verify/re-tweak step and return the
-  solve's own solution and reference-star list. The verify step replaces that list with the deepest
-  index's stars, so a pipeline tuned on unverified solutions can measure differently with it on;
-  this makes the choice configuration rather than an accident of the host. Verifying an existing
-  WCS always runs.
+  solve's own, unverified solution, so whether it runs is configuration rather than an accident of the
+  host. Verifying an existing WCS always runs.
 
 ### Changed
 
