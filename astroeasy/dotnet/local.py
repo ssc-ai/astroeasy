@@ -1,8 +1,10 @@
 import logging
 import os
-import re
+import shutil
 import subprocess
 from pathlib import Path
+
+from astroeasy.dotnet import solver_version
 
 logger = logging.getLogger(__name__)
 
@@ -72,42 +74,33 @@ def run_against_local(
             cwd=run_directory,
             env=_SOLVE_ENV,
         )
+        if result.returncode != 0:
+            # Keeping the first-pass WCS here would make the answer depend on whether this host's
+            # verify step can run, so a solve whose verify failed is not a solve.
+            logger.error(
+                f"[run_against_local] verification step failed (solve-field returned "
+                f"{result.returncode}); discarding this solution"
+            )
+            for line in f"{result.stdout}\n{result.stderr}".strip().split("\n")[-10:]:
+                logger.error(f"[solve-field verify] {line}")
+            return False
         logger.info("[run_against_local] verification step complete")
 
     return successful_fit
 
 
-def test_dotnet_install():
-    try:
-        # Check if solve-field exists in PATH using which/where command
-        which_cmd = "where" if subprocess.os.name == "nt" else "which"
-        location_result = subprocess.run([which_cmd, "solve-field"], capture_output=True, text=True)
+def test_dotnet_install() -> bool:
+    """Test that solve-field is on the PATH and is the astrometry.net release astroeasy is pinned to.
 
-        if location_result.returncode != 0:
-            logger.error("solve-field (Astrometry.net) is not installed or not in PATH")
-            return False
-
-        solve_field_path = location_result.stdout.strip()
-        logger.info(f"solve-field found at: {solve_field_path}")
-
-        # Get version information
-        result = subprocess.run(["solve-field"], capture_output=True, text=True)
-        revision_match = re.search(r"Revision\s+([\d.]+)", result.stdout)
-
-        if revision_match:
-            version = revision_match.group(1)
-            logger.info(f"solve-field (Astrometry.net) version: {version}")
-            return True
-        else:
-            logger.warning(
-                "solve-field (Astrometry.net) is installed but version could not be determined"
-            )
-            return True
-
-    except FileNotFoundError:
+    Returns:
+        True if it is (or another release is accepted via ASTROEASY_ALLOW_UNPINNED_SOLVER).
+    """
+    solve_field_path = shutil.which("solve-field")
+    if solve_field_path is None:
         logger.error("solve-field (Astrometry.net) is not installed or not in PATH")
         return False
-
+    logger.info(f"solve-field found at: {solve_field_path}")
+    return solver_version.solver_is_acceptable(solver_version.read_solver_revision(None))
 
 if __name__ == "__main__":
     test_dotnet_install()

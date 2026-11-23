@@ -4,6 +4,93 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.3.0] - 2026-11-21
+
+1.2.3 was prepared but never published. Its changes (configurable search radius and odds-to-solve,
+and the `solve_field_aggressive` config fix, listed under [1.2.3] below) first ship in this release.
+
+Same inputs now give the same solution on every host. Through 1.2.x they did not, and on MDP survey
+fields the image centre moved by up to 0.9″ (about a pixel) between two otherwise identical runs.
+
+### Fixed
+
+- **The verify step read solve-field's default config, not astroeasy's.** Every solve runs solve-field
+  twice: the solve, then `solve-field --verify <wcs>` to verify the solution and re-tweak its SIP terms.
+  Only the solve was given the generated `astrometry.cfg`. The verify step fell back to the solver's
+  default config. Where that file listed the index files, the verify step re-tweaked the WCS. Anywhere
+  else (a stock install, a source build, a container whose indices are mounted elsewhere) it failed with
+  "You must list at least one index". The verify step now reads the generated config, and gets the same
+  `--cpulimit` as the solve.
+- **A failed verify step was ignored.** Neither runner checked its exit status, so the first-pass WCS
+  was returned as if verified. A solve whose verify step fails now fails, and solve-field's output is
+  logged.
+- **The verify step replaced the solution's reference-star list.** It rewrites `<base>.rdls` with the
+  stars of whichever index it settles on, usually the deepest: hundreds of mostly faint stars instead of
+  the solving index's few dozen. That file is what a solve returns as `matched_stars`, so a working
+  verify step changed what a caller measured against, not only the WCS. The solve and the verify step now
+  run separately, and the solve's list is kept. On MDP, a pipeline consuming the list recovered the
+  correlated observations it had lost with the verify step on.
+
+### Added
+
+- **Pinned astrometry.net release** (`ASTROMETRY_NET_VERSION = "0.99"`). Python dependency pins cannot
+  express a C program on the PATH, so astroeasy enforces it at run time. `test_install()` /
+  `astroeasy test-install` fail on another release, and so does every solve, with the new
+  `SolverVersionError`. The solver is asked once per process; a missing solver is still left to the
+  solve to report. `ASTROEASY_ALLOW_UNPINNED_SOLVER=1` opts out, with a warning, for evaluating other
+  releases. `read_solver_revision()` reports which release a host has, for run provenance.
+- **`verify_solution`** (default `True`). Set `False` to skip the verify/re-tweak step and return the
+  solve's own, unverified solution, so whether it runs is configuration rather than an accident of the
+  host. Verifying an existing WCS always runs.
+
+### Changed
+
+- **The Docker image builds astrometry.net 0.99** (`ARG ASTROMETRY_NET_REF=0.99`) instead of whatever
+  the upstream default branch was at build time. A test holds the image's ref and
+  `ASTROMETRY_NET_VERSION` equal. The pinned release changes only in a minor release, so
+  `astroeasy~=1.3.0` fixes a dependant's solver.
+- **Upgrade note.** A host whose default config listed the indices already got the verify step's
+  re-tweak and sees no change. A host whose verify step was failing now gets the re-tweaked solutions,
+  which differ by up to about a pixel. Hosts with any astrometry.net other than 0.99 must install 0.99
+  (see the README) or opt out. To keep the previous behaviour of hosts whose verify step was
+  failing, set `verify_solution: false`.
+
+## [1.2.3] - 2026-08-14 (never published; ships in 1.3.0)
+
+### Added
+
+- **Configurable plate-solve search radius** — `AstrometryConfig.search_radius`
+  (degrees, default `10.0`). When the image metadata carries a boresight,
+  `solve_field` passes `--ra`/`--dec` with a radius that was previously
+  hard-coded at 10 degrees. That is generous for a sensor whose pointing is
+  known to better than a degree: the solver spends its `cpulimit` searching sky
+  the frame cannot contain, and a frame that will not solve burns the whole
+  budget before failing. The default preserves the previous behaviour exactly.
+- **Configurable solve acceptance threshold** — `AstrometryConfig.odds_to_solve`
+  (default `None`). When set, `--odds-to-solve` is passed to `solve-field`;
+  `None` omits the flag and keeps solve-field's own default. Raising it rejects
+  marginal solutions that a downstream refinement would otherwise have to detect
+  and discard.
+
+### Fixed
+
+- **`solve_field_aggressive` silently dropped six configuration fields.** It
+  varies `max_sources` across attempts and rebuilt `AstrometryConfig` by hand to
+  do so, copying 7 of the dataclass's 13 fields; `indices_series`,
+  `tweak_order`, `output_dir`, `release_index_page_cache`, `search_radius` and
+  `odds_to_solve` were reset to their defaults on every attempt. Two of those
+  change solving outright — a caller selecting the `5200` index series got
+  `5200_LITE`, and one setting `tweak_order=1` got `2` — so the aggressive path
+  could fail, or succeed differently, where a direct `solve_field` call with the
+  same config would not, and nothing surfaced the substitution. It now uses
+  `dataclasses.replace`, which varies the one field by construction and cannot
+  go stale as fields are added. **Behaviour change:** callers of
+  `solve_field_aggressive` that set any of those six now get their configured
+  value, so results on that path may move.
+
+
 ## [1.2.2] - 2026-08-04
 
 Release and development infrastructure only — no library code changed. Note

@@ -26,7 +26,8 @@ from importlib.metadata import version
 from astroeasy.catalog import query_gaia_field
 from astroeasy.catalog.gaia import CatalogStar, get_field_bounds_from_wcs
 from astroeasy.config import AstrometryConfig
-from astroeasy.constants import AstrometryIndexSeries
+from astroeasy.constants import ASTROMETRY_NET_VERSION, AstrometryIndexSeries
+from astroeasy.dotnet.solver_version import SolverVersionError, read_solver_revision
 from astroeasy.indices import download_indices, examine_indices, scales_for_fov
 from astroeasy.models import (
     AggressiveSolveResult,
@@ -60,12 +61,16 @@ __all__ = [
     "WCSResult",
     "WCSStatus",
     # Constants
+    "ASTROMETRY_NET_VERSION",
     "AstrometryIndexSeries",
+    # Errors
+    "SolverVersionError",
     # Functions
     "solve_field",
     "solve_field_aggressive",
     "solve_field_image",
     "test_install",
+    "read_solver_revision",
     "examine_indices",
     "download_indices",
     "scales_for_fov",

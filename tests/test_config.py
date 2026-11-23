@@ -158,3 +158,79 @@ class TestAstrometryIndexSeries:
         """Test creating series from string value."""
         series = AstrometryIndexSeries("5200_LITE")
         assert series == AstrometryIndexSeries.SERIES_5200_LITE
+
+
+class TestSearchRadiusAndOdds:
+    """search_radius / odds_to_solve defaults, round-trip, and command construction."""
+
+    def test_defaults_preserve_previous_behaviour(self):
+        config = AstrometryConfig(indices_path=Path("/data/indices"))
+        assert config.search_radius == 10.0
+        assert config.odds_to_solve is None
+
+    def test_round_trip_through_dict(self):
+        config = AstrometryConfig(
+            indices_path=Path("/data/indices"),
+            search_radius=5.0,
+            odds_to_solve=21.0,
+        )
+        restored = AstrometryConfig.from_dict(config.to_dict())
+        assert restored.search_radius == 5.0
+        assert restored.odds_to_solve == 21.0
+
+    def test_from_dict_defaults_when_absent(self):
+        config = AstrometryConfig.from_dict({"indices_path": "/data/indices"})
+        assert config.search_radius == 10.0
+        assert config.odds_to_solve is None
+
+
+class TestAggressiveSolvePreservesConfig:
+    """solve_field_aggressive must vary only max_sources, never drop other settings."""
+
+    def test_every_field_but_max_sources_is_carried_forward(self, monkeypatch):
+        from dataclasses import fields
+
+        from astroeasy import runner
+
+        config = AstrometryConfig(
+            indices_path=Path("/data/indices"),
+            indices_series="5200",
+            tweak_order=1,
+            output_dir=Path("/tmp/out"),
+            release_index_page_cache=False,
+            search_radius=5.0,
+            odds_to_solve=21.0,
+            max_sources=100,
+        )
+
+        seen: list[AstrometryConfig] = []
+
+        def fake_solve(detections, metadata, cfg, existing_wcs=None):
+            seen.append(cfg)
+            return type("R", (), {"success": False})()
+
+        monkeypatch.setattr(runner, "solve_field", fake_solve)
+        runner.solve_field_aggressive([], object(), config, max_sources_sequence=[25, 50])
+
+        assert [c.max_sources for c in seen] == [25, 50]
+        for cfg in seen:
+            for f in fields(AstrometryConfig):
+                if f.name == "max_sources":
+                    continue
+                assert getattr(cfg, f.name) == getattr(config, f.name), (
+                    f"{f.name} was not carried forward"
+                )
+
+
+class TestVerifySolution:
+    """verify_solution: default on, round-trips through dict/YAML, absent means on."""
+
+    def test_default_is_on(self):
+        assert AstrometryConfig(indices_path=Path("/data/indices")).verify_solution is True
+
+    def test_round_trip_through_dict(self):
+        config = AstrometryConfig(indices_path=Path("/data/indices"), verify_solution=False)
+        assert AstrometryConfig.from_dict(config.to_dict()).verify_solution is False
+
+    def test_from_dict_default_when_absent(self):
+        assert AstrometryConfig.from_dict({"indices_path": "/data/indices"}).verify_solution is True

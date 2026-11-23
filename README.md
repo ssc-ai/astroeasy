@@ -59,6 +59,17 @@ if result.success:
 
 ## Setup
 
+astroeasy is pinned to one astrometry.net release, `astroeasy.ASTROMETRY_NET_VERSION` (currently
+**0.99**). Different `solve-field` builds can return different solutions for identical input, so a
+solve only reproduces across hosts when they run the same solver. astroeasy enforces the pin at run
+time. `test-install` fails on any other release, and so does every solve, with `SolverVersionError`.
+Distribution packages are usually a different release; Ubuntu 24.04's `apt install astrometry.net`,
+for example, is 0.93.
+
+To run against another release anyway, e.g. to evaluate the next pin, set
+`ASTROEASY_ALLOW_UNPINNED_SOLVER=1`. Each such process logs a warning, because its results then depend
+on the solver installed on that host.
+
 ### Option 1: Docker (Recommended)
 
 Build the astrometry.net container:
@@ -76,7 +87,22 @@ astroeasy test-install --docker astrometry-cli
 
 ### Option 2: Local Installation
 
-If you have astrometry.net installed locally:
+Build the pinned release from source. No root is needed with a private prefix; put its `bin/` first on
+`PATH`. `ARCH_FLAGS=""` stops the build from tuning itself to the build machine's CPU
+(`-march=native` is the upstream default). The top-level Makefile is not safe under `make -j`.
+
+```sh
+git clone --branch 0.99 --depth 1 https://github.com/dstndstn/astrometry.net.git
+cd astrometry.net
+ARCH_FLAGS="" make
+ARCH_FLAGS="" make install INSTALL_DIR=$HOME/.local/astrometry-0.99
+export PATH=$HOME/.local/astrometry-0.99/bin:$PATH
+```
+
+That builds everything astroeasy's solves use. `make py` and `make extra` add the Python bindings and
+plotting tools.
+
+Then check it:
 
 ```sh
 astroeasy test-install --local
@@ -250,6 +276,8 @@ max_width_degrees: 10.0
 tweak_order: 2
 max_sources: 100
 min_sources_for_attempt: 4
+search_radius: 10.0      # degrees around the boresight hint that solve-field may search
+odds_to_solve: null      # null keeps solve-field's own acceptance threshold
 ```
 
 ### Python Configuration
@@ -263,6 +291,8 @@ config = AstrometryConfig(
     cpulimit_seconds=60,
     min_width_degrees=0.5,
     max_width_degrees=5.0,
+    search_radius=5.0,      # narrow the boresight search to the pointing uncertainty
+    odds_to_solve=21.0,     # reject marginal solutions rather than refining them later
 )
 
 # Load from YAML

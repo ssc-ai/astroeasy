@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ from astropy.io import fits
 from astroeasy.config import AstrometryConfig
 from astroeasy.dotnet.docker import run_against_container
 from astroeasy.dotnet.local import run_against_local
+from astroeasy.dotnet.solver_version import ensure_pinned_solver
 from astroeasy.models import (
     Detection,
     ImageMetadata,
@@ -74,6 +76,74 @@ maxwidth {config.max_width_degrees}
 """
     with open(output_path, "w") as f:
         f.write(cfg_content)
+
+
+def _verify_command(
+    wcs_name: str,
+    input_name: str,
+    tweak_command: str,
+    width_height_args: str,
+    cpulimit_seconds: int,
+) -> str:
+    """Build the verify/re-tweak step that follows a solve.
+
+    It reads the same generated ``astrometry.cfg`` as the solve, and gets the same CPU limit. Without
+    ``--config``, solve-field falls back to its DEFAULT config file. That file lists the index files on
+    some hosts and none on others, so the verify step re-tweaked the WCS on the first kind of host and
+    failed on the second. Identical inputs then gave different solutions, decided by the host.
+
+    Args:
+        wcs_name: WCS file to verify (the solve's output, or an existing WCS).
+        input_name: The field: an image or an xylist.
+        tweak_command: ``--tweak-order N`` or ``--no-tweak``, as for the solve.
+        width_height_args: ``--width W --height H``, as for the solve.
+        cpulimit_seconds: CPU limit for the step.
+
+    Returns:
+        The command line.
+    """
+    return (
+        f"solve-field --config astrometry.cfg --verify {wcs_name} {input_name}{tweak_command} "
+        f"--tag-all --continue --no-plots --cpulimit {cpulimit_seconds}" + width_height_args
+    )
+
+
+def _solve_then_verify(
+    run: Callable[[str | None, str | None], bool],
+    solve_command: str | None,
+    verify_command: str | None,
+    run_directory: Path,
+    base_name: str,
+) -> bool:
+    """Run the solve, then the verify step separately, keeping the solve's reference-star list.
+
+    solve-field's verify step re-checks a solution against every index covering the field and rewrites
+    ``<base_name>.rdls`` with the stars of whichever index it settles on, usually the deepest: hundreds of
+    mostly faint stars instead of the solving index's few dozen. That file is what a solve returns as its
+    reference stars (``SolveResult.matched_stars``). Letting the verify step swap it changed what a
+    downstream pipeline measured against, even though the verified WCS itself fits the catalog better, so
+    the solve's list is put back after the verify step.
+
+    Args:
+        run: Runs solve-field: ``run(solve_command, verify_command)`` -> whether there is a solution.
+        solve_command: The solve, or None when only verifying an existing WCS.
+        verify_command: The verify step, or None when it is turned off.
+        run_directory: Where solve-field writes its output.
+        base_name: Base filename of the outputs (``"sources"`` or ``"image"``).
+
+    Returns:
+        Whether there is a solution: the solve succeeded and, if it ran, so did the verify step.
+    """
+    if solve_command is None or verify_command is None:
+        return run(solve_command, verify_command)
+    if not run(solve_command, None):
+        return False
+    rdls = run_directory / f"{base_name}.rdls"
+    solve_stars = rdls.read_bytes() if rdls.exists() else None
+    verified = run(None, verify_command)
+    if solve_stars is not None:
+        rdls.write_bytes(solve_stars)
+    return verified
 
 
 def _write_sources_fits(
@@ -341,25 +411,29 @@ def solve_field_image(
             solve_field_command += " --no-plots --downsample 2"
             solve_field_command += tweak_command
 
-        # Build verification command
+        # Skipped when the caller turned it off -- except when verifying an existing WCS, where
+        # the verify step is the whole operation.
         verify_command = (
-            f"solve-field --verify image.wcs {image_name}{tweak_command} "
-            f"--tag-all --continue --no-plots"
-            + width_height_args
+            _verify_command("image.wcs", image_name, tweak_command, width_height_args, config.cpulimit_seconds)
+            if config.verify_solution or existing_wcs is not None
+            else None
         )
 
-        # Run solver
+        # Run solver (only on the pinned astrometry.net release)
+        ensure_pinned_solver(config.docker_image)
         if config.docker_image:
-            success = runner(
-                solve_field_command,
-                temp_path,
-                config.indices_path,
-                config.docker_image,
-                verify_command,
-                config.output_dir,
-            )
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(
+                    solve, temp_path, config.indices_path, config.docker_image, verify, config.output_dir
+                )
+
         else:
-            success = runner(solve_field_command, temp_path, verify_command)
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(solve, temp_path, verify)
+
+        success = _solve_then_verify(run, solve_field_command, verify_command, temp_path, "image")
 
         if success:
             wcs_result = _read_wcs_result(temp_path / "image.wcs")
@@ -464,36 +538,43 @@ def solve_field(
                 solve_field_command += (
                     f" --ra {image_metadata.boresight_ra}"
                     f" --dec {image_metadata.boresight_dec}"
-                    " --radius 10.0"
+                    f" --radius {config.search_radius}"
                 )
 
             solve_field_command += " --crpix-center --overwrite --scale-units degw"
             solve_field_command += f" --scale-low {config.min_width_degrees}"
             solve_field_command += f" --scale-high {config.max_width_degrees}"
+            if config.odds_to_solve is not None:
+                solve_field_command += f" --odds-to-solve {config.odds_to_solve}"
             solve_field_command += (
                 f" --continue --cpulimit {config.cpulimit_seconds} --sort-column FLUX"
             )
             solve_field_command += " --no-plots"
             solve_field_command += tweak_command
 
-        # Build verification command
+        # Skipped when the caller turned it off -- except when verifying an existing WCS, where
+        # the verify step is the whole operation.
         verify_command = (
-            f"solve-field --verify sources.wcs sources.fits{tweak_command} --tag-all --continue --no-plots"
-            + width_height_args
+            _verify_command("sources.wcs", "sources.fits", tweak_command, width_height_args, config.cpulimit_seconds)
+            if config.verify_solution or existing_wcs is not None
+            else None
         )
 
-        # Run solver
+        # Run solver (only on the pinned astrometry.net release)
+        ensure_pinned_solver(config.docker_image)
         if config.docker_image:
-            success = runner(
-                solve_field_command,
-                temp_path,
-                config.indices_path,
-                config.docker_image,
-                verify_command,
-                config.output_dir,
-            )
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(
+                    solve, temp_path, config.indices_path, config.docker_image, verify, config.output_dir
+                )
+
         else:
-            success = runner(solve_field_command, temp_path, verify_command)
+
+            def run(solve: str | None, verify: str | None) -> bool:
+                return runner(solve, temp_path, verify)
+
+        success = _solve_then_verify(run, solve_field_command, verify_command, temp_path, "sources")
 
         if success:
             wcs_result = _read_wcs_result(temp_path / "sources.wcs")
